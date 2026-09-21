@@ -1,0 +1,32 @@
+services:
+  aiwsp:
+    build: .
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://${DOMAIN:?Set DOMAIN in .env}
+      PORT: 3000
+      DATA_DIR: /data
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-wsp-admin}
+      ADMIN_NAME: ${ADMIN_NAME:-WSP System Admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - aiwsp_data:/data
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - aiwsp
+volumes:
+  aiwsp_data:
+  caddy_data:
+  caddy_config:

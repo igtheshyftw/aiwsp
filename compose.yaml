@@ -1,0 +1,18 @@
+services:
+  aiwsp:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      PORT: 3000
+      DATA_DIR: /data
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-wsp-admin}
+      ADMIN_NAME: ${ADMIN_NAME:-WSP System Admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      - aiwsp_data:/data
+volumes:
+  aiwsp_data:
