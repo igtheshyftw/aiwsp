@@ -5,7 +5,7 @@ import {resolve,dirname,sep} from 'node:path';
 
 export const dataDirectory=resolve(process.env.DATA_DIR||'data');
 mkdirSync(dataDirectory,{recursive:true,mode:0o700});
-const sql=new DatabaseSync(resolve(dataDirectory,'aiwsp.sqlite'));
+export const sql=new DatabaseSync(resolve(dataDirectory,'aiwsp.sqlite'));
 sql.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS workspace(id TEXT PRIMARY KEY,body TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 0);
  CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,expires INTEGER NOT NULL,revision INTEGER NOT NULL);
