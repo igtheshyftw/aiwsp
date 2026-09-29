@@ -25,9 +25,11 @@ Legend: ✅ already in AiWSP · 🟡 partly there · ❌ missing · ❓ need mor
 - Header toolbar, left to right:
   - **＋** opens a blank **eFile Setup Adminstration** form (create eFile).
   - **▦ Expand eFile**: per the owner. Probably expands the list to show each eFile's items inline. **❓ confirm with a screenshot.**
-  - **📁 System Link**: per the owner. **❓ what it links to.**
+  - **📁 System Link**: opens its own page (IMS › My eFile › System Link) with a checkbox + Name list (empty for this user), its own search, and a toolbar of 🖧 (hierarchy/org view?), 📁 (folder) and ⚙ (actions). **❓ what an entry looks like once added, and how one is created.**
   - **◌ Recently Updated**: eFiles with recent changes.
-  - **red 🔨 To Do**: the user's pending work (likely items awaiting their confirmation or action).
+  - **red 🔨 To Do**: opens a page (breadcrumb "eFile", so probably also the eFile home) with two tabs:
+    - **Confirm**: presumably items waiting for this user's 1st–5th Confirmation sign-off. **❓ capture this tab.**
+    - **Process Executor**: eFiles where this user carries out a process step (seen: "Expense Claim Demo - A", "Things to test 1"). "Things to test 1" is not in My eFile, so this list reaches beyond the personal list. Single Name column, search, paging.
   - **⚙** bulk-action menu for the ticked eFiles: Add to My eFile, Remove from My eFile, MTT-MyeFile, Cancel MTT-MyeFile, Share, Cancel Share, Share Balance, Cancel Share Balance, Hide, Cancel Hide, Set Password, Cancel Password, Add/Remove Users, Replace User, Replace eFile Name, Insert eFile Name, Add/Remove Color, **Add to eFile Link**, eFile Process Monitor, Archive.
   - **✱** views menu: Sync With Wechat, Filter By Color, **My Process**, **My Confirmation** (probably items waiting on me), **eFile Link**, Hide List, eFile Explorer, Archive List.
 - A search box with a 🔒 "locked search" button. The page header has its own search and refresh.
@@ -66,6 +68,8 @@ Fields seen in the View of an existing eFile (cut off after the last one):
 Two tabs:
 - **eFile Process Monitor**: the chain of eFiles an item passes through, with the number of items at each stage. For Expense Claim Demo - A: 1 Expense Claim Demo - A (3) → 2 Payment eFile (0) → 3 Finance Manager Approval (0) → 4 WL Approval (0) → 5 Cashier Submission (0) → 6 WL Banking Approval (0). Below it is a greyed-out tile labelled 性能 ("performance"), probably an unused dashboard widget.
 - **Relevant eFile List**: the processes this eFile belongs to. Columns: Process Name (link), 1st eFile Name, Item.
+
+The To Do page's **Process Executor** tab shows that each process step has an *executor*: a user responsible for moving items on.
 
 **Key insight:** a *process* is an ordered chain of eFiles, and an item moves from one eFile to the next (claim → payment → approvals → cashier → bank). This is separate from the 1st–5th Confirmation sign-offs inside a single eFile. **❓ need the Set Process dialog to see how a chain is defined, and what moves an item to the next eFile.**
 
@@ -133,7 +137,7 @@ AiWSP: 🟡 has an audit log, but it records changes only and has no module/func
 1. **Set Process** dialog (how an eFile chain is defined) and what moves an item to the next eFile.
 2. **An item opened**: its form, its confirmation screen, and what happens at each step.
 3. The rest of the eFile setup form (below "Sync With Wechat: Group").
-4. What ✱ next to an eFile name means; screens for Expand eFile, System Link and To Do.
+4. What ✱ next to an eFile name means; To Do → Confirm tab; Expand eFile; one System Link entry.
 5. The ＋ add-item form, and the blue/green counters on an item row.
 6. Add/edit forms for User, Role (permission matrix), User Group, Company and Client, and what **Share** means.
 7. **Service Team** and **qChat**, each top-bar badge opened, and the user dropdown.
