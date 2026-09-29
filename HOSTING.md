@@ -48,6 +48,14 @@ Never put secrets into GitHub files or frontend environment variables. Enter the
 4. **Account → User Group:** group people who share eFiles, e.g. "Management Team".
 5. **IMS → My eFile → ＋:** create eFiles, then use the row menu for Set Confirmation, Set Grand Balance/Sum and Set Process.
 
+## Hosting in mainland China
+
+- **ICP filing (备案):** a website on a mainland server, reached by a domain name on ports 80/443, needs an ICP filing before the provider will open it. Your cloud provider (Alibaba Cloud, Tencent Cloud, Huawei Cloud) runs the filing for you; allow a few weeks. A **Hong Kong** server needs no filing and is usually fast enough from the mainland.
+- **Downloads during the build:** Docker Hub, npm and GitHub are slow or blocked from many mainland servers. Set `NODE_IMAGE` and `NPM_REGISTRY` in `.env` to the mirrors shown in `.env.example`. For Caddy, either pull `caddy:2` through the same mirror, or use the provider's load balancer for HTTPS. To get the code onto the server, upload a ZIP, or mirror the repository to Gitee.
+- **HTTPS certificates:** Caddy's automatic Let's Encrypt certificates normally work from the mainland once DNS points at the server and ports 80/443 are open. Alternatively, use the free certificate from your cloud provider.
+- **The application itself** has no outside dependencies at run time (no Google fonts, CDNs or foreign APIs), so pages load normally in China.
+- **Personal data:** staff names, phones and emails are personal information under China's PIPL. Keep the server and its backups in a region you are comfortable with, and restrict who holds the admin account.
+
 ## Update from GitHub
 
 Back up the data first, then pull your new commit and run the same `docker compose ... up --build -d` command. Preserve the named volume. Do **not** use `docker compose down --volumes`: that deletes the stored database and attachments.
