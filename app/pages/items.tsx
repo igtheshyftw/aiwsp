@@ -93,9 +93,9 @@ export function ItemList({efileId, filter: initial}: {efileId: string, filter?: 
       <span className="markers" style={{marginLeft: 6}}>
        <i className={'fa star ' + (i.starred ? 'fa-star on' : 'fa-star-o')} role="button" title="Star" onClick={() => call('item.star', {id: i.id})}/>
        {i.steps.map((s: any) => <span key={s.position} title={stepTitle(s.position) + (s.confirmed ? ' ✔' : '')}><Circ n={s.position} done={s.confirmed}/></span>)}
-       {i.stage && <span className="boxed" title={`Process stage ${i.stage}`}>{i.stage}</span>}
+       {i.stage && <span className="bx" title={`Process stage ${i.stage}`}>{i.stage}</span>}
        {i.in_process && <i className="fa fa-cogs" title="In a process"/>}
-       {i.all_confirmed && <span className="boxed c" title="All confirmations complete">C</span>}
+       {i.all_confirmed && <span className="bx c" title="All confirmations complete">C</span>}
        {i.mirrored && <i className="fa fa-link" title="Linked from another eFile"/>}
        {i.shared_in && <i className="fa fa-share-alt" title="Shared from another eFile"/>}
        {i.special_marking && <i className="fa fa-volume-off special" title="Special Marking"/>}

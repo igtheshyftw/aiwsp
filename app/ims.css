@@ -73,7 +73,7 @@ body.collapsed .main { margin-left: 50px; }
 .tool { width: 38px; height: 30px; border: 0; background: transparent; color: #fff; font-size: 15px; display: grid; place-items: center; }
 .tool:hover, .tool.on { background: rgba(255, 255, 255, .18); }
 .tool.red { color: #e0321f; }
-.tool.boxed { background: var(--blue-btn); width: 34px; }
+.tool.boxed { background: var(--blue-btn); width: 34px; height: 30px; }
 .btn { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px; border: 1px solid transparent; font-size: 14px; background: #fff; }
 .btn.green { background: var(--green); color: #fff; }
 .btn.blue { background: var(--blue-btn); color: #fff; }
@@ -100,6 +100,7 @@ table.dt tbody tr:nth-child(odd) td { background: #f9f9f9; }
 table.dt td.check, table.dt th.check { width: 30px; text-align: center; }
 table.dt td.num, table.dt th.num { text-align: right; }
 table.dt td.menu-cell { width: 56px; }
+table.dt th.menu-col { width: 180px; }
 table.dt tr.tall td { height: 49px; vertical-align: middle; }
 table.dt .empty { padding: 10px 8px; }
 table.dt a.link { text-decoration: underline; }
@@ -136,8 +137,8 @@ tr.balance.notional td { background: #4a73cf !important; }
 tr.item-hl td { background: #fff4c2 !important; }
 .circ { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1px solid #333; border-radius: 50%; font-size: 10.5px; line-height: 1; }
 .circ.done { background: #333; color: #fff; }
-.boxed { display: inline-grid; place-items: center; min-width: 13px; height: 16px; border: 1px solid #333; font-size: 10.5px; padding: 0 2px; }
-.boxed.c { font-style: italic; }
+.bx { display: inline-grid; place-items: center; min-width: 13px; height: 16px; border: 1px solid #333; font-size: 10.5px; padding: 0 2px; }
+.bx.c { font-style: italic; }
 .star { color: #333; cursor: pointer; }
 .star.on { color: #e6a700; }
 .counters { display: flex; gap: 4px; align-items: center; }
@@ -222,4 +223,7 @@ tr.item-hl td { background: #fff4c2 !important; }
   .sidebar { width: 50px; } .sidebar .label, .sidebar .arrow, .submenu { display: none; }
   .main { margin-left: 50px; } .form .field { width: auto; margin-left: 12px; margin-right: 12px; } .form .actions { padding-left: 12px; }
   .dt-search input { width: 140px; } .page { padding: 0 8px 40px; } .table-wrap { overflow-x: auto; }
+  table.dt th.menu-col { width: 52px; } .panel-head { flex-wrap: wrap; font-size: 16px; padding: 4px 8px; } .tool { width: 30px; }
+  .user-name { display: none; } .badge-btn { width: 40px; } .crumb .tools input { width: 90px; } .form .inline input, .form .date input { width: 100%; }
+  .filters input[type=text], .filters input[type=date], .state-filter select { width: 100%; } .picker-cols { grid-template-columns: 1fr; }
 }

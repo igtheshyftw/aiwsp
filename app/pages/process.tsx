@@ -51,7 +51,7 @@ export function SetProcess({efileId}: {efileId: string}) {
     <table className="dt">
      <thead><tr>
       <th className="check"><input type="checkbox" checked={sel.length === stages.length} onChange={() => setSel(sel.length === stages.length ? [] : stages.map((_, i) => i))} aria-label="Select all"/></th>
-      <th style={{width: 60}}/><th>Name</th><th className="req" style={{width: '22%'}}><span style={{color: '#d9432f'}}>*</span>Executor</th><th style={{width: '22%'}}>Notify Others</th>
+      <th style={{width: 60}}/><th>Name</th><th style={{width: '22%'}}><span style={{color: '#d9432f'}}>*</span>Executor</th><th style={{width: '22%'}}>Notify Others</th>
       <th style={{width: 72}}>Auto<br/>Commit</th><th style={{width: 100}}>Confirm<br/>Balance/Sum</th><th style={{width: 150}}/>
      </tr></thead>
      <tbody>{stages.map((s, i) => <tr key={s.efile_id}>
@@ -62,7 +62,7 @@ export function SetProcess({efileId}: {efileId: string}) {
       <td style={{cursor: 'pointer'}} onClick={() => pickNotify(i)}>{s.notify.map(u => u.label + ';').join('')}</td>
       <td><input type="checkbox" checked={s.auto_commit} onChange={e => set(i, {auto_commit: e.target.checked})} aria-label="Auto Commit"/></td>
       <td><input type="checkbox" checked={s.confirm_balance} onChange={e => set(i, {confirm_balance: e.target.checked})} aria-label="Confirm Balance/Sum"/></td>
-      <td style={{whiteSpace: 'nowrap', fontSize: 13}}>
+      <td style={{whiteSpace: 'nowrap', fontSize: 13, color: '#000'}}>
        {i > 0 && <><button className="clear" style={{padding: 0, color: '#d9432f', fontSize: 14}} title="Remove" onClick={() => setStages(stages.filter((_, j) => j !== i))}><i className="fa fa-times"/></button> ‖ </>}
        <button className="clear" style={{padding: 0, color: '#000', fontSize: 14}} title="Insert eFile after" onClick={() => insertAfter(i)}><i className="fa fa-plus"/></button> ‖{' '}
        <a title="Open eFile" href={href(`/ims/efile/${s.efile_id}`)}><i className="fa fa-share-square-o"/></a> ‖{' '}

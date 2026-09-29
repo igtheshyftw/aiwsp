@@ -1,5 +1,5 @@
 // Shared IMS building blocks: shell, breadcrumb, panels, DataTables-style lists, dropdown menus, dialogs and pickers.
-import {useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {api, go, href, useRoute, fmtTime} from './lib';
 
 export type Me = {id: string, username: string, name: string, name_en: string, company: {id: string, name_cn: string, name_en: string}, sys: boolean, perms: string[]};
@@ -99,7 +99,16 @@ export function Modal({title, onClose, foot, children, wide}: {title: string, on
 export type MenuItem = {icon?: string, label: ReactNode, onClick?: () => void, disabled?: boolean} | '-';
 export function Menu({button, items, align = 'right'}: {button: (open: () => void, isOpen: boolean) => ReactNode, items: MenuItem[], align?: 'left' | 'right'}) {
  const [open, setOpen] = useState(false);
+ const [side, setSide] = useState(align);
  const ref = useRef<HTMLDivElement>(null);
+ const drop = useRef<HTMLDivElement>(null);
+ // Keep the menu on screen: flip to the other side when it would overflow the window.
+ useLayoutEffect(() => {
+  if (!open) { setSide(align); return; }
+  const r = drop.current?.getBoundingClientRect(); if (!r) return;
+  if (r.right > window.innerWidth - 4 && side === 'left') setSide('right');
+  else if (r.left < 4 && side === 'right') setSide('left');
+ }, [open, side, align]);
  useEffect(() => {
   if (!open) return;
   const off = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
@@ -107,7 +116,7 @@ export function Menu({button, items, align = 'right'}: {button: (open: () => voi
  }, [open]);
  return <div ref={ref} style={{position: 'relative', display: 'inline-block'}}>
   {button(() => setOpen(o => !o), open)}
-  {open && <div className="dropdown" style={{top: '100%', [align]: 0}}>
+  {open && <div ref={drop} className="dropdown" style={{top: '100%', [side]: 0}}>
    {items.map((it, i) => it === '-' ? <hr key={i}/> :
     <button key={i} disabled={it.disabled} onClick={() => { setOpen(false); it.onClick?.(); }}>{it.icon && <i className={'fa ' + it.icon}/>}{it.label}</button>)}
   </div>}
@@ -143,7 +152,7 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
     {icon: 'fa-key', label: 'Change Password', onClick: () => go('/profile?password=1')},
     '-',
     {icon: 'fa-sign-out', label: 'Log Out', onClick: onLogout},
-   ]} button={toggle => <button className="user-btn" onClick={toggle}><span className="avatar"><i className="fa fa-user"/></span>{me.name_en}<i className="fa fa-angle-down"/></button>}/>
+   ]} button={toggle => <button className="user-btn" onClick={toggle}><span className="avatar"><i className="fa fa-user"/></span><span className="user-name">{me.name_en}</span><i className="fa fa-angle-down"/></button>}/>
   </header>
   <nav className="sidebar" aria-label="Main">
    <button className="toggle" onClick={() => setCollapsed(c => !c)} aria-label="Toggle menu"><i className="fa fa-bars"/></button>
@@ -237,7 +246,7 @@ export function DataTable<T extends {id: string}>({columns, rows, pageSizes = [1
     {selectable && <th className="check"><input type="checkbox" checked={allOn} aria-label="Select all" onChange={() => onSelect?.(allOn ? [...sel].filter(id => !shown.some(r => r.id === id)) : [...new Set([...sel, ...shown.map(r => r.id)])])}/></th>}
     {columns.map(c => <th key={c.key} style={{width: c.width}} className={[c.className, sortable && c.sort !== undefined ? 'sortable' : '', sort?.key === c.key ? (sort.dir === 1 ? 'asc' : 'desc') : ''].join(' ')}
      onClick={() => sortable && c.sort !== undefined && setSort(s => s?.key === c.key ? {key: c.key, dir: s.dir === 1 ? -1 : 1} : {key: c.key, dir: 1})}>{c.title}</th>)}
-    {menu && <th style={{width: 180}}/>}
+    {menu && <th className="menu-col"/>}
    </tr></thead>
    <tbody>
     {pinned}

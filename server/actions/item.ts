@@ -142,7 +142,7 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
   else if (filter === 'process') rows = rows.filter(r => get(`SELECT 1 FROM process_run WHERE stage_item_id=? AND status='running'`, r.id));
   else if (filter === 'processDone') rows = rows.filter(r => get(`SELECT 1 FROM process_run WHERE (origin_item_id=? OR stage_item_id=?) AND (status='completed' OR stage_item_id<>?)`, r.id, r.id, r.id));
   else if (filter === 'unlocked') rows = rows.filter(r => get(`SELECT 1 FROM item_link WHERE item_id=? AND locked=0 AND kind IN ('auto_link','conditional_auto_link','split_link')`, r.id));
-  rows.sort((a, z) => (z.move_to_top - a.move_to_top) || z.item_date.localeCompare(a.item_date) || z.created_at.localeCompare(a.created_at));
+  rows.sort((a, z) => (z.move_to_top - a.move_to_top) || z.item_date.localeCompare(a.item_date) || a.created_at.localeCompare(z.created_at));
   const items = rows.map(r => itemRow(c, r));
   const shareOnly = e.role === 'member' && get('SELECT balance FROM efile_share WHERE efile_id=? AND user_id=?', e.id, c.user.id)?.balance === 0;
   const bal = balances(e);
