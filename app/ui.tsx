@@ -225,10 +225,14 @@ export function DataTable<T extends {id: string}>({columns, rows, pageSizes = [1
  const query = searchValue ?? q;
  const filtered = useMemo(() => {
   let r = rows;
-  if (!onSearch && query) { const s = query.toLowerCase(); r = r.filter(x => JSON.stringify(x).toLowerCase().includes(s)); }
+  if (query) {
+   const s = query.toLowerCase();
+   const text = (x: any) => Object.entries(x).filter(([k, v]) => k !== 'id' && !k.endsWith('_id') && (typeof v === 'string' || typeof v === 'number')).map(([, v]) => String(v)).join(' ').toLowerCase();
+   r = r.filter(x => text(x).includes(s));
+  }
   if (sort) { const col = columns.find(c => c.key === sort.key); const val = col?.sort ?? ((x: any) => String(x[sort.key] ?? '')); r = [...r].sort((a, b) => { const va = val(a), vb = val(b); return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir; }); }
   return r;
- }, [rows, query, sort, columns, onSearch]);
+ }, [rows, query, sort, columns]);
  const pages = Math.max(1, Math.ceil(filtered.length / size));
  const cur = Math.min(page, pages - 1);
  const shown = filtered.slice(cur * size, cur * size + size);

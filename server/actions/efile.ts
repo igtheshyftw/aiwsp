@@ -2,7 +2,7 @@
 import {all, get, run, uid, now, tx, type Row} from '../db';
 import {check, hashPassword, validPassword, equal} from '../auth';
 import {type Ctx, need, text, required, bool, ids, cents, userLabel, log, fmt} from '../ctx';
-import {visible, efile as openEfile} from '../access';
+import {visible, membership, efile as openEfile} from '../access';
 
 export const COLORS = ['', 'Blue', 'Teal', 'Green', 'Yellow', 'Orange', 'Red', 'Purple', 'Grey', 'Personalised 1', 'Personalised 2', 'Personalised 3', 'Personalised 4', 'Personalised 5'];
 const color = (v: any) => COLORS.includes(v) ? v : '';
@@ -43,8 +43,8 @@ export const efileActions: Record<string, (c: Ctx, b: any) => any> = {
   const view = text(b.view, 20) || 'my';
   const [cond, params] = visible(c);
   const where: string[] = [cond]; const args: any[] = [...params];
-  const my = 'COALESCE(ue.in_my,1)=1', notHidden = 'COALESCE(ue.hidden,0)=0';
-  if (view === 'my') where.push(my, notHidden, 'e.archived=0');
+  const notHidden = 'COALESCE(ue.hidden,0)=0';
+  if (view === 'my') { const [m, mp] = membership(c); where.push(`(ue.in_my=1 OR (ue.in_my IS NULL AND ${m}))`, notHidden, 'e.archived=0'); args.push(...mp); }
   else if (view === 'explorer') where.push('e.archived=0');
   else if (view === 'recent') where.push(notHidden, 'e.archived=0');
   else if (view === 'links') where.push('COALESCE(ue.link,0)=1', 'e.archived=0');

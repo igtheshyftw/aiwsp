@@ -229,6 +229,7 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
     const e = openEfile(c, i.efile_id);
     check(e.role === 'admin' || i.created_by === c.user.id, 'Only the item creator or an eFile administrator can delete this item.');
     check(!get(`SELECT 1 FROM process_run WHERE (origin_item_id=? AND stage_item_id<>?) AND status='running'`, i.id, i.id), `"${i.name}" has moved on in its process and cannot be deleted here.`);
+    check(!get(`SELECT 1 FROM process_run WHERE stage_item_id=? AND stage>1 AND status='running'`, i.id), `"${i.name}" is in a running process. Delete it from the first eFile of the process instead.`);
     removeMirrors(i.id); run('DELETE FROM item WHERE id=?', i.id); touch(e.id);
     log(c, 'item', 'remove', `删除Item:${e.name} - ${i.name.slice(0, 80)}`);
    }

@@ -88,6 +88,7 @@ try {
  assert.equal(myList.length, 4); assert.equal(myList.find(e => e.id === claim).in_process, 1);
  assert.equal((await mi('efile.list', {view: 'my'})).length, 2, 'Michelle sees only eFiles she takes part in');
 
+
  // Item with confirmations and an auto link that flips the sign into the payable ledger
  const entertainment = (await mi('item.save', {efileId: claim, name: 'Entertainment', amount: '200', item_date: '2023-09-01', steps: [1, 2, 3],
   links: [{kind: 'auto_link', efile_id: payable, change_sign: true}]})).id;
@@ -105,6 +106,8 @@ try {
  assert.equal((await admin('todo.confirm')).length, 1);
  await admin('item.confirm', {id: entertainment});
  const wi = session(); await wi('login', {username: 'William', password: pw});
+ assert.equal((await wi('efile.list', {view: 'my'})).length, 3, 'My eFile lists only eFiles William takes part in');
+ assert.equal((await wi('efile.list', {view: 'explorer'})).length, 4, 'Administrator level can explore every company eFile');
  // A company administrator cannot take over the system administrator's account
  await admin('user.save', {id: william, username: 'William', name_cn: '梁广鑫', name_en: 'William', sex: 'M', dept: 'LSK Management,Management', level: 'Administrator', roleIds: [roles.find(r => r.name === 'A/C Administrator').id]});
  await wi('user.reset', {id: me.id, password: 'taken-over-123'}, {ok: false});
