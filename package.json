@@ -10,7 +10,8 @@
     "start": "node --env-file-if-exists=.env dist/server.mjs",
     "dev": "npm run build && npm start",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/standalone.mjs"
+    "test": "node tests/standalone.mjs",
+    "demo": "node scripts/demo.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

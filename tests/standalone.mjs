@@ -105,6 +105,10 @@ try {
  assert.equal((await admin('todo.confirm')).length, 1);
  await admin('item.confirm', {id: entertainment});
  const wi = session(); await wi('login', {username: 'William', password: pw});
+ // A company administrator cannot take over the system administrator's account
+ await admin('user.save', {id: william, username: 'William', name_cn: '梁广鑫', name_en: 'William', sex: 'M', dept: 'LSK Management,Management', level: 'Administrator', roleIds: [roles.find(r => r.name === 'A/C Administrator').id]});
+ await wi('user.reset', {id: me.id, password: 'taken-over-123'}, {ok: false});
+ await wi('user.state', {id: me.id}, {ok: false});
  let monitor = await admin('efile.monitor', {id: claim});
  assert.deepEqual(monitor.stages.map(s => s.items), [1, 0, 0]);
  await wi('item.confirm', {id: entertainment}); // last step signed → Auto Commit moves it to Payment eFile

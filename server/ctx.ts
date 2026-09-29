@@ -41,6 +41,10 @@ export function find(table: string, id: any, label = 'Record') {
 export function companyUser(c: Ctx, id: any, companyId = c.companyId) {
  const u = find('user', id, 'User'); check(c.sys || u.company_id === companyId, 'User is unavailable.'); return u;
 }
+// A user whose account may be changed by this user: only the system administrator can change a system administrator.
+export function manageableUser(c: Ctx, id: any) {
+ const u = companyUser(c, id); check(c.sys || !u.system_admin, 'Only the system administrator can change this account.'); return u;
+}
 export const userLabel = (u: Row) => (u.name_cn && u.name_en && u.name_cn !== u.name_en) ? `${u.name_cn}:${u.name_en}` : (u.name_en || u.name_cn || u.username);
 
 // System log, with IMS's original Chinese module and function labels.

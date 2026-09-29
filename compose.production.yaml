@@ -7,9 +7,12 @@ services:
       PORT: 3000
       DATA_DIR: /data
       ADMIN_USERNAME: ${ADMIN_USERNAME:-wsp-admin}
-      ADMIN_NAME: ${ADMIN_NAME:-WSP System Admin}
+      ADMIN_NAME: ${ADMIN_NAME:-System Administrator}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      COMPANY_NAME: ${COMPANY_NAME:-}
+      COMPANY_NAME_CN: ${COMPANY_NAME_CN:-}
+      COMPANY_CODE: ${COMPANY_CODE:-}
     volumes:
       - aiwsp_data:/data
   caddy:

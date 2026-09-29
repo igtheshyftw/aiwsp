@@ -1,7 +1,7 @@
 // Account menu: Company, User, Role, User Group, System Log; plus IMS → Client Management.
 import {all, get, run, uid, now, tx} from '../db';
 import {check, hashPassword, validPassword, ALL_PERMS} from '../auth';
-import {type Ctx, need, text, required, bool, ids, date, companyScope, sameCompany, find, companyUser, userLabel, log} from '../ctx';
+import {type Ctx, need, text, required, bool, ids, date, companyScope, sameCompany, find, companyUser, manageableUser, userLabel, log} from '../ctx';
 
 const COMPANY_TYPES = ['Communicative', 'Operating', 'Client', 'Supplier', 'Partner'];
 const LEVELS = ['Normal User', 'Administrator'];
@@ -62,7 +62,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
    dept: text(b.dept, 200), email: text(b.email, 120), mobile: text(b.mobile, 40), level: LEVELS.includes(b.level) ? b.level : 'Normal User'};
   check(/^[A-Za-z0-9._-]{2,40}$/.test(f.username), 'Name may contain 2–40 letters, numbers, dots, hyphens or underscores.');
   check(!f.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email), 'Email is not valid.');
-  const existing = b.id ? companyUser(c, b.id) : null;
+  const existing = b.id ? manageableUser(c, b.id) : null;
   const companyId = existing ? existing.company_id : companyScope(c, b.companyId);
   check(!get('SELECT id FROM user WHERE username=? AND id<>?', f.username, existing?.id ?? ''), 'This name is already used by another account.');
   const roleIds = ids(b.roleIds).filter(r => get('SELECT id FROM role WHERE id=? AND company_id=?', r, companyId));
@@ -79,21 +79,21 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
   });
  },
  'user.state'(c, b) {
-  need(c, 'user'); const u = companyUser(c, b.id);
+  need(c, 'user'); const u = manageableUser(c, b.id);
   check(u.id !== c.user.id, 'You cannot deactivate your own account.');
   const state = u.state === 'normal' ? 'invalid' : 'normal';
   tx(() => { run('UPDATE user SET state=?,revision=revision+1 WHERE id=?', state, u.id); log(c, 'account', 'modify', `${state === 'invalid' ? '停用' : '启用'}用户:${u.username}`); });
   return {state};
  },
  async 'user.reset'(c, b) {
-  need(c, 'user'); const u = companyUser(c, b.id); validPassword(b.password);
+  need(c, 'user'); const u = manageableUser(c, b.id); validPassword(b.password);
   const salt = uid(), pass = await hashPassword(b.password, salt);
   tx(() => { run('UPDATE user SET salt=?,pass=?,revision=revision+1 WHERE id=?', salt, pass, u.id); log(c, 'account', 'modify', `重置密码:${u.username}`); });
   return {};
  },
  // Hand-over tools from the user row menu.
  'user.transfer'(c, b) {
-  need(c, 'user'); const from = companyUser(c, b.id);
+  need(c, 'user'); const from = manageableUser(c, b.id);
   const kind = text(b.kind, 40);
   const needsTarget = kind !== 'groupDelete';
   const to = needsTarget ? companyUser(c, b.to) : null;

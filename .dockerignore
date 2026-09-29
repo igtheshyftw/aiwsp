@@ -7,3 +7,4 @@ backups
 .git
 *.log
 *.tsbuildinfo
+demo-data

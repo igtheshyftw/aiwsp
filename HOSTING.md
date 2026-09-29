@@ -1,4 +1,4 @@
-# Hosting AiWSP from your GitHub repository
+# Hosting IMS from your GitHub repository
 
 ## Option 1: your server with Docker and a domain
 
@@ -12,9 +12,9 @@ Use a Linux server with Docker and Docker Compose installed. The server must hav
 docker compose -f compose.production.yaml up --build -d
 ```
 
-4. Open `https://YOUR_DOMAIN`. Sign in with `wsp-admin` (or the username configured in `.env`) and the password you chose.
+4. Open `https://YOUR_DOMAIN`. Sign in with the `ADMIN_USERNAME` from `.env` and the password you chose.
 
-This production configuration includes Caddy for HTTPS. The AiWSP container has no directly published network port. Certificate issuance requires working DNS and external connectivity. The host, domain and any provider charges are yours to configure; this ZIP does not provision a server.
+This production configuration includes Caddy for HTTPS. The application container has no directly published network port. Certificate issuance requires working DNS and external connectivity. The host, domain and any provider charges are yours to configure; this ZIP does not provision a server.
 
 ## Option 2: a Docker host connected to GitHub
 
@@ -30,10 +30,11 @@ On a hosting service that supports Docker **and persistent disks**:
 | `PUBLIC_URL` | Your complete HTTPS origin, e.g. `https://your-domain.example`, with no subpath |
 | `DATA_DIR` | `/data` |
 | `PORT` | `3000` |
-| `ADMIN_USERNAME` | `wsp-admin`, or a username you choose |
-| `ADMIN_PASSWORD` | Your own strong password, at least 12 characters |
+| `ADMIN_USERNAME` | The first administrator's user name |
+| `ADMIN_PASSWORD` | Your own strong password, at least 8 characters |
 | `ADMIN_NAME` | Your administrator display name |
 | `ADMIN_EMAIL` | Optional contact email |
+| `COMPANY_NAME` / `COMPANY_NAME_CN` / `COMPANY_CODE` | Your company, created on the first start |
 
 5. Deploy one instance. Open the host's URL and sign in.
 
@@ -41,13 +42,11 @@ Never put secrets into GitHub files or frontend environment variables. Enter the
 
 ## First business setup
 
-1. **System Management → Account creation:** create your company.
-2. Select that company in the top bar.
-3. **User management → Invite users:** generate a registration link/QR code.
-4. Registrants can sign in immediately at Level 3. Assign the Chief Admin and adjust permissions as required.
-5. **eFile List → New eFile:** create records and select participants/approvers.
-
-Favorites, pins, folder organisation and locked searches are personal. They do not grant access. Chief Admin/User Admin, or a System Admin authorized by company settings, manages company connections.
+1. **Account → Company:** check your company's name, type, code and city.
+2. **Account → Role:** adjust the two standard roles, or add your own.
+3. **Account → User:** add each person, with their Chinese and English names, department and roles.
+4. **Account → User Group:** group people who share eFiles, e.g. "Management Team".
+5. **IMS → My eFile → ＋:** create eFiles, then use the row menu for Set Confirmation, Set Grand Balance/Sum and Set Process.
 
 ## Update from GitHub
 
@@ -55,16 +54,15 @@ Back up the data first, then pull your new commit and run the same `docker compo
 
 ## Backup and restore
 
-Back up the whole `/data` directory, including the SQLite database and uploads. For a simple consistent backup, stop the AiWSP container first, copy its `/data` directory to protected backup storage, then restart it. Keep backups off the hosting disk. To restore, stop the application and replace the entire data directory with a matched backup, preserving permissions; then start it and verify both records and attachments. Do not copy only the SQLite main file while the server is running; WAL files may contain recent writes.
+Back up the whole `/data` directory, including the SQLite database and uploads. For a simple consistent backup, stop the application container first, copy its `/data` directory to protected backup storage, then restart it. Keep backups off the hosting disk. To restore, stop the application and replace the entire data directory with a matched backup, preserving permissions; then start it and verify both records and attachments. Do not copy only the SQLite main file while the server is running; WAL files may contain recent writes.
 
 ## If sign-in or saving fails
 
-- First boot exits: check that `ADMIN_PASSWORD` is at least 12 characters and `/data` is writable.
+- First boot exits: check that `ADMIN_PASSWORD` is at least 8 characters and `/data` is writable.
 - Login form loads but saving is rejected: check `PUBLIC_URL` exactly matches your HTTPS origin.
 - Login does not persist: check HTTPS and browser cookie settings.
 - Data disappears after redeploy: the data directory was not attached to persistent storage.
-- Existing administrator password does not change with `.env`: expected; use **User setting → Edit profile & password**.
-- Forgotten password: another authorized administrator can issue a reset link for ordinary users. This version has no self-service email recovery or emergency System Admin reset utility; retain administrator credentials securely and keep another named System Admin.
+- Existing administrator password does not change with `.env`: expected; use **your name (top right) → Change Password**.
+- Forgotten password: a user with the User permission can use **Reset Password** in the user's row menu. Only the first (system) administrator can reset the system administrator's password, so keep it safe.
 - Repeated login attempts are rate-limited. A proxy may make several people share the same apparent address; do not forward untrusted client IP headers into the app.
 
-The ZIP changes the hosting and sign-in architecture; it is not a fix to Cloudflare's block on the previous URL. It provides a separately hosted installation.
