@@ -71,7 +71,38 @@ Two tabs:
 
 The To Do page's **Process Executor** tab shows that each process step has an *executor*: a user responsible for moving items on.
 
+## Set Process (from the eFile ≡ menu)
+
+- **Name** (the process name, defaults to the first eFile's name, e.g. "Expense Claim Demo - A").
+- **eFile** table, one row per stage, in order:
+
+| # | Name | *Executor | Notify Others | Auto Commit | Confirm Balance/Sum |
+|---|---|---|---|---|---|
+| 1 | Expense Claim Demo - A | Michael | | ☑ | ☐ |
+| 2 | Payment eFile | Michael | | ☐ | ☐ |
+| 3 | Finance Manager Approval | William | | ☐ | ☐ |
+| 4 | WL Approval | williamleong | | ☐ | ☐ |
+| 5 | Cashier Submission | Michael | | ☐ | ☐ |
+| 6 | WL Banking Approval | williamleong | | ☐ | ☑ |
+
+  - **Executor** (required): the user who moves items on from this stage. They see it under To Do → Process Executor.
+  - **Notify Others**: extra users told when an item arrives.
+  - **Auto Commit**: the item moves to the next stage automatically, with no executor action. **❓ triggered when? probably once the item's confirmations complete.**
+  - **Confirm Balance/Sum**: the stage confirms or updates the eFile's running balance (ticked on the final banking step).
+  - Row tools: ✖ remove stage (not on row 1), ＋ insert stage, ↗ open eFile, ⧉ copy, 🔗 link, and a status dot (black; **red on row 2**). **❓ what the red dot means (current stage? error?).**
+- **Select eFile** buttons: pick an existing eFile, edit, copy.
+- Footer: ↺ reset, ✔ save.
+
 **Key insight:** a *process* is an ordered chain of eFiles, and an item moves from one eFile to the next (claim → payment → approvals → cashier → bank). This is separate from the 1st–5th Confirmation sign-offs inside a single eFile. **❓ need the Set Process dialog to see how a chain is defined, and what moves an item to the next eFile.**
+
+## Item form (lower half captured; opened from an item)
+
+- **Auto Copy eFiles**: table Name | **Change Sign**, plus Select eFile. Saving the item also copies it into these eFiles, optionally with the amount negated. This explains the negative amounts (e.g. a claim of 300 appears as −300 against "Amount Payable to A").
+- **Auto Share eFiles**: table Name, plus Select eFile. The item is shared (not copied) into these eFiles.
+- **Bind eFile**: table eFile Name | Item Name, plus Select eFile. Links this item to a specific item in another eFile.
+- **Confirmation**: checkboxes with Select All. Each step has a **title** chosen on the eFile: "Michelle submission", "Michael's checking", "Manager's approval", "Cashier (Michael)'s submission of monthly expense claim". **Each item picks which confirmation steps apply** (this explains why "A monthly claim - August" shows no ①–④).
+- **Item Date** (e.g. 2023-09-01) and **Target Date** (a due date), each with a date picker and ⊗ clear.
+- **❓ the top half (name, amount, notes, attachments?) and anything below Target Date.**
 
 ## eFile → Item List (inside "Expense Claim Demo - A")
 
@@ -134,10 +165,10 @@ AiWSP: 🟡 has an audit log, but it records changes only and has no module/func
 
 ## Most valuable next captures
 
-1. **Set Process** dialog (how an eFile chain is defined) and what moves an item to the next eFile.
-2. **An item opened**: its form, its confirmation screen, and what happens at each step.
-3. The rest of the eFile setup form (below "Sync With Wechat: Group").
-4. What ✱ next to an eFile name means; To Do → Confirm tab; Expand eFile; one System Link entry.
-5. The ＋ add-item form, and the blue/green counters on an item row.
+1. **Top half of the item form** (name, amount, notes, attachments, …) and anything below Target Date.
+2. **Confirming an item**: what the confirmer sees (To Do → Confirm) and what the buttons are (confirm / reject / comment?).
+3. **Executor's view**: what a Process Executor does to move an item to the next eFile.
+4. The rest of the eFile setup form (below "Sync With Wechat: Group"), especially how confirmation step titles are set.
+5. What ✱ next to an eFile name means; the red dot in Set Process; Expand eFile; one System Link entry.
 6. Add/edit forms for User, Role (permission matrix), User Group, Company and Client, and what **Share** means.
 7. **Service Team** and **qChat**, each top-bar badge opened, and the user dropdown.
