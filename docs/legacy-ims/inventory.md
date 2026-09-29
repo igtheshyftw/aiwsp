@@ -4,6 +4,9 @@ Captured from screenshots of the original "IMS" system (footer "2015 © IMS").
 Each screen is compared with what AiWSP already implements (`lib/model.ts`, `app/`).
 Personal details (emails, phone numbers) from the screenshots are deliberately left out.
 
+**Direction:** the legacy IMS is the target design. Where AiWSP differs, AiWSP changes to match IMS.
+Existing AiWSP code is reused only where it already fits.
+
 Legend: ✅ already in AiWSP · 🟡 partly there · ❌ missing · ❓ need more captures
 
 ## Shell / layout
@@ -50,15 +53,24 @@ AiWSP: 🟡 users have name, username, email, role (fixed enum), level, permissi
 
 AiWSP: 🟡 fixed roles (system/chief/useradmin/member) plus levels 1–4 and per-user permission overrides. Legacy uses **named, company-defined roles**. **❓ Need the role edit screen (the permission matrix) and what "Share" means.**
 
-## Account → User Group / System Log
+## Account → User Group (`Group List`)
 
-- Not captured yet. AiWSP: ✅ groups, ✅ audit log. **❓ Capture both.**
+- Columns: **Name** (e.g. "Management Team"), **Share**, row menu. Header ⚙▾ dropdown.
+- Row "≡" menu: **Edit**, **Delete**, **User List** (group members), **Group eFile** (eFiles shared with the group).
+- The row menus on other lists probably follow the same pattern (Edit / Delete / related lists).
+
+AiWSP: 🟡 groups have name and members. Missing: **Share**, delete, and the "Group eFile" view. **❓ Need the Edit form, the User List view and the Group eFile view.**
+
+## Account → System Log
+
+- Not captured yet. AiWSP: ✅ audit log. **❓ Capture it.**
 
 ## Most valuable next captures
 
 1. Inside an eFile: click a row such as "Expense Claim Demo - A" and capture the item list, an item form and the approval flow.
 2. The row "≡" menu on each list (what actions it offers).
 3. Add/edit forms for Client, Company, User and Role, including the role permission matrix.
-4. User Group list and form, and the System Log list.
-5. Each top-bar badge opened, and the user dropdown.
-6. The eFile toolbar icons, and the ⚙⚙ / ✱ markers explained.
+4. User Group edit form, its User List and Group eFile views, and the System Log list.
+5. What **Share** means on Role and User Group (open an edit form that has it).
+6. Each top-bar badge opened, and the user dropdown.
+7. The eFile toolbar icons, and the ⚙⚙ / ✱ markers explained.
