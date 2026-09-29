@@ -21,18 +21,23 @@ Legend: ✅ already in AiWSP · 🟡 partly there · ❌ missing · ❓ need mor
 ## IMS → My eFile (`My eFile List`)
 
 - Single "Name" column with a checkbox per row for bulk actions. Row background comes from the eFile's **Color** setting (named palette entries such as "Personalised 3"); **Highlight** probably makes the name bold.
-- **Confirmed by the owner:** the ⚙⚙ and ✱ markers after a name, and the toolbar icons, are **links to other eFiles**.
-  - Name markers: clicking one jumps to a linked eFile. Working assumption: ✱ is a link created by "Set Process" (e.g. Expense Claim → Payment eFile) and ⚙⚙ one watched by "eFile Process Monitor". **❓ which eFile each marker opens.**
-  - Header toolbar (＋, ▦, 📁, ◌, red 🔨, ⚙, ✱): shortcut links to eFiles. These are probably what **Assign eFile Link** on the user menu sets up, per user. **❓ confirm, and whether ＋ is "add eFile" or also a link.**
-- The item list's toolbar (💡, ⚙, ✱) and the ⚙⚙ marker on items are probably the same kind of link.
+- Owner's note: the markers and toolbar icons relate to **links to other eFiles**. The ⚙⚙ marker uses the "eFile Process Monitor" icon, so it most likely means "this eFile is part of a process". **❓ what ✱ on a name means (Payment eFile has both).**
+- Header toolbar, left to right:
+  - **＋** opens a blank **eFile Setup Adminstration** form (create eFile).
+  - **▦**, **📁**, **◌**, **red 🔨**: **❓ not captured yet.**
+  - **⚙** bulk-action menu for the ticked eFiles: Add to My eFile, Remove from My eFile, MTT-MyeFile, Cancel MTT-MyeFile, Share, Cancel Share, Share Balance, Cancel Share Balance, Hide, Cancel Hide, Set Password, Cancel Password, Add/Remove Users, Replace User, Replace eFile Name, Insert eFile Name, Add/Remove Color, **Add to eFile Link**, eFile Process Monitor, Archive.
+  - **✱** views menu: Sync With Wechat, Filter By Color, **My Process**, **My Confirmation** (probably items waiting on me), **eFile Link**, Hide List, eFile Explorer, Archive List.
 - A search box with a 🔒 "locked search" button. The page header has its own search and refresh.
+- Implied concepts: "My eFile" is a personal list you add eFiles to or remove them from; eFiles can be hidden, archived or password-protected; eFile names can be bulk-edited (replace/insert text). **❓ what "MTT" stands for.**
 - Row "≡" menu: **View**, **Edit**, **Delete**, **Set Confirmation**, **Set Process**, **X Process Set** (clear the process?), **Set Grand Balance/Sum**, **eFile Process Monitor**, **Copy And Share**, **Cancel Share**, **Copy eFile**.
 
 AiWSP: 🟡 has eFile lists, folders, favourites, pinning, locked searches and colour, but its eFile model differs (see setup below).
 
 ## eFile setup (`eFile Setup Adminstration`, the Edit/View form)
 
-Fields seen (the capture was cut off after the last one):
+The create form (＋) shows, in order: ***Name**, Tag, **Item Template Folder** (a picker button), Select Type (radio: User And Group), ***Participants**, ***Group**, ***Administrators**, **Sync With Wechat: Participants**, **Sync With Wechat: Group**, … (cut off). People and groups are chosen from a picker and can be cleared with ⊗. A green button top-right probably saves. `*` = required.
+
+Fields seen in the View of an existing eFile (cut off after the last one):
 
 | Field | Example | Notes |
 |---|---|---|
@@ -52,6 +57,14 @@ Fields seen (the capture was cut off after the last one):
 | Notional Balance/Sum | 0.00 | second, "notional" total |
 | Notional Balance/Sum Alias | … | |
 | … | | **❓ scroll down and capture the rest** |
+
+## eFile Process Monitor (from the eFile ≡ menu)
+
+Two tabs:
+- **eFile Process Monitor**: the chain of eFiles an item passes through, with the number of items at each stage. For Expense Claim Demo - A: 1 Expense Claim Demo - A (3) → 2 Payment eFile (0) → 3 Finance Manager Approval (0) → 4 WL Approval (0) → 5 Cashier Submission (0) → 6 WL Banking Approval (0). Below it is a greyed-out tile labelled 性能 ("performance"), probably an unused dashboard widget.
+- **Relevant eFile List**: the processes this eFile belongs to. Columns: Process Name (link), 1st eFile Name, Item.
+
+**Key insight:** a *process* is an ordered chain of eFiles, and an item moves from one eFile to the next (claim → payment → approvals → cashier → bank). This is separate from the 1st–5th Confirmation sign-offs inside a single eFile. **❓ need the Set Process dialog to see how a chain is defined, and what moves an item to the next eFile.**
 
 ## eFile → Item List (inside "Expense Claim Demo - A")
 
@@ -114,10 +127,10 @@ AiWSP: 🟡 has an audit log, but it records changes only and has no module/func
 
 ## Most valuable next captures
 
-1. **The rest of the eFile setup form** (scroll below Notional Balance/Sum Alias).
-2. **An item opened**: its form, its confirmation/approval screen, and what happens at each step.
-3. The ＋ add item form, and the blue/green counters on an item row.
-4. Set Confirmation, Set Process and Set Grand Balance/Sum dialogs, and the eFile Process Monitor.
-5. Add/edit forms for User, Role (permission matrix), User Group, Company and Client, and what **Share** means.
-6. **Service Team** and **qChat**: where they live (maybe the top-bar icons?).
-7. Each top-bar badge opened, and the user dropdown.
+1. **Set Process** dialog (how an eFile chain is defined) and what moves an item to the next eFile.
+2. **An item opened**: its form, its confirmation screen, and what happens at each step.
+3. The rest of the eFile setup form (below "Sync With Wechat: Group").
+4. The ▦, 📁, ◌ and red 🔨 toolbar icons, and what ✱ next to an eFile name means.
+5. The ＋ add-item form, and the blue/green counters on an item row.
+6. Add/edit forms for User, Role (permission matrix), User Group, Company and Client, and what **Share** means.
+7. **Service Team** and **qChat**, each top-bar badge opened, and the user dropdown.
