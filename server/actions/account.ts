@@ -1,226 +1,362 @@
-// Account menu: Company, User, Role, User Group, System Log; plus IMS → Client Management.
-import {all, get, run, uid, now, tx} from '../db';
-import {check, hashPassword, validPassword, ALL_PERMS} from '../auth';
-import {type Ctx, need, text, required, bool, ids, date, companyScope, sameCompany, find, companyUser, manageableUser, userLabel, log} from '../ctx';
+// Account menu (Company, User, Role = authorization levels, User Group, Connection, System Log), registration QR codes
+// and IMS → Client Management. Rules follow docs/aiwsp/urgent-functions.md.
+import QRCode from 'qrcode';
+import {all, get, run, uid, now, tx, type Row} from '../db';
+import {check, hashPassword, validPassword, digest, live, PERMS, seedLevels, publicOrigin} from '../auth';
+import {type Ctx, allowed, needPerm, text, required, bool, ids, date, companyScope, find, manageableUser, userLabel, log, notify,
+ companyAdmin, managesUsers, managesConnections, viewsLog, liveChief, userManagers, connectedUserIds, eligibleContact, userPerms} from '../ctx';
+import {liveAdmins} from '../access';
 
 const COMPANY_TYPES = ['Communicative', 'Operating', 'Client', 'Supplier', 'Partner'];
-const LEVELS = ['Normal User', 'Administrator'];
+const POSITION_LABEL: Record<string, string> = {system: 'System Admin', chief: 'Chief Admin', useradmin: 'User Admin', member: 'User'};
 
-function publicUser(u: any) {
- const roles = all('SELECT r.name FROM role r JOIN user_role ur ON ur.role_id=r.id WHERE ur.user_id=? ORDER BY r.name', u.id).map(r => r.name);
- return {id: u.id, company_id: u.company_id, username: u.username, name_cn: u.name_cn, name_en: u.name_en, sex: u.sex, dept: u.dept,
-  email: u.email, mobile: u.mobile, account_type: u.account_type, level: u.level, state: u.state, system_admin: !!u.system_admin,
-  roles, role_ids: all('SELECT role_id FROM user_role WHERE user_id=?', u.id).map(r => r.role_id),
-  role_label: [...roles, `${u.account_type} - ${u.level}`].join(',')};
+function levelName(companyId: string, level: number) { return get('SELECT name FROM level WHERE company_id=? AND level=?', companyId, level)?.name ?? `Level ${level}`; }
+function publicUser(u: Row) {
+ return {id: u.id, company_id: u.company_id, username: u.username, name_cn: u.name_cn, name_en: u.name_en, sex: u.sex, dept: u.dept, email: u.email, mobile: u.mobile,
+  position: u.position, level: u.level, perms: JSON.parse(u.perms || '{}'), effective: [...userPerms(u)], expires: u.expires, responsible_id: u.responsible_id,
+  state: u.state, live: !!live(u), mfa: !!u.totp_secret,
+  role_label: [POSITION_LABEL[u.position], levelName(u.company_id, u.level)].join(' - ') + (u.expires ? ` (until ${u.expires.slice(0, 10)})` : '')};
 }
+function userEfiles(userId: string): Row[] {
+ const rows = all(`SELECT e.id, e.name, e.company_id,
+   EXISTS(SELECT 1 FROM efile_member m WHERE m.efile_id=e.id AND m.user_id=? AND m.kind='participant') AS is_user,
+   (SELECT rights FROM efile_member m WHERE m.efile_id=e.id AND m.user_id=? AND m.kind='participant') AS rights,
+   EXISTS(SELECT 1 FROM efile_member m WHERE m.efile_id=e.id AND m.user_id=? AND m.kind='admin') AS is_admin,
+   EXISTS(SELECT 1 FROM efile_step_user s WHERE s.efile_id=e.id AND s.user_id=?) AS is_approver
+  FROM efile e WHERE e.id IN (SELECT efile_id FROM efile_member WHERE user_id=? UNION SELECT efile_id FROM efile_step_user WHERE user_id=?) ORDER BY e.name`, userId, userId, userId, userId, userId, userId);
+ return rows.map(r => ({...r, pending: get(`SELECT COUNT(*) AS n FROM item i JOIN item_step s ON s.item_id=i.id AND s.round=i.round WHERE i.efile_id=? AND i.status='pending' AND s.decision IS NULL AND s.approvers LIKE ?`, r.id, `%"${userId}"%`)!.n}));
+}
+// Levels and function rights a manager may hand out: never better than their own (System Admins excepted).
+function checkGrant(c: Ctx, companyId: string, level: number, perms: Record<string, boolean>) {
+ check([1, 2, 3, 4].includes(level), 'Choose a level from 1 to 4.');
+ if (c.sys) return;
+ if (companyId === c.companyId) check(level >= c.user.level, 'You cannot grant a higher level than your own.');
+ const target = new Set<string>(JSON.parse(get('SELECT perms FROM level WHERE company_id=? AND level=?', companyId, level)!.perms));
+ for (const [k, v] of Object.entries(perms)) v ? target.add(k) : target.delete(k);
+ for (const p of target) check(allowed(c, p), 'You cannot grant a function you do not hold yourself.');
+}
+async function newPassword(pw: any) { validPassword(pw); const salt = uid(); return {salt, pass: await hashPassword(pw, salt)}; }
 
 export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
- // ---- Company
+ // ---------------- Company
  'company.list'(c) {
-  need(c, 'company');
-  return c.sys ? all('SELECT * FROM company ORDER BY created_at') : all('SELECT * FROM company WHERE id=?', c.companyId);
+  const rows = c.sys ? all('SELECT * FROM company ORDER BY operator DESC, created_at') : all('SELECT * FROM company WHERE id=?', c.companyId);
+  return rows.map(r => ({...r, chief: (u => u ? u.username : '')(liveChief(r.id)), can_edit: c.sys || companyAdmin(c, r.id), manages_users: managesUsers(c, r.id)}));
  },
- 'company.get'(c, b) { need(c, 'company'); const r = find('company', b.id, 'Company'); sameCompany(c, r.id); return {company: r, types: COMPANY_TYPES}; },
+ 'company.get'(c, b) {
+  const r = find('company', b.id, 'Company'); check(c.sys || r.id === c.companyId);
+  return {company: r, types: COMPANY_TYPES, chief: liveChief(r.id)?.id ?? '', can_settings: companyAdmin(c, r.id) || (c.sys && false), is_chief: c.position === 'chief' && c.companyId === r.id,
+   users: all(`SELECT id, username, name_en, position FROM user WHERE company_id=? AND state='normal' ORDER BY username`, r.id)};
+ },
  'company.save'(c, b) {
-  need(c, 'company');
-  const f = {name_cn: required(b.name_cn, 'Name'), name_en: text(b.name_en), type: text(b.type, 60), code: text(b.code, 40), city: text(b.city, 80),
-   status: b.status === 'suspended' ? 'suspended' : 'normal'};
+  const f = {name_cn: required(b.name_cn, 'Name'), name_en: required(b.name_en, 'English Name'), type: text(b.type, 60), code: text(b.code, 40), city: text(b.city, 80),
+   address: text(b.address, 300), contact: text(b.contact, 80), email: text(b.email, 120), phone: text(b.phone, 40)};
+  check(!f.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email), 'Email is not valid.');
   if (!b.id) {
-   check(c.sys, 'Only the system administrator can add companies.');
-   const id = uid(), acAdmin = uid(), standard = uid();
+   check(c.sys, 'Only a System Admin can add companies.');
+   const id = uid();
    tx(() => {
-    run('INSERT INTO company(id,name_cn,name_en,type,code,city,status,created_at) VALUES(?,?,?,?,?,?,?,?)', id, f.name_cn, f.name_en, f.type, f.code, f.city, f.status, now());
-    run('INSERT INTO role(id,company_id,name,description,perms) VALUES(?,?,?,?,?)', acAdmin, id, 'A/C Administrator', 'Company account administrator - with all authorisation', JSON.stringify(ALL_PERMS));
-    run('INSERT INTO role(id,company_id,name,description,perms) VALUES(?,?,?,?,?)', standard, id, 'Standard users', 'Without authorisation to set up company account, user, role, user group and view system log', JSON.stringify(['client', 'efile']));
-    log(c, 'account', 'add', `新增公司:${f.name_cn}`);
+    run('INSERT INTO company(id,name_cn,name_en,type,code,city,address,contact,email,phone,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)', id, f.name_cn, f.name_en, f.type, f.code, f.city, f.address, f.contact, f.email, f.phone, now());
+    seedLevels(id);
+    log(c, 'account', 'add', `新增公司:${f.name_cn}`, id);
    });
    return {id};
   }
-  const r = find('company', b.id, 'Company'); sameCompany(c, r.id);
-  if (!c.sys) f.status = r.status;
-  check(!(r.id === c.companyId && f.status === 'suspended'), 'You cannot suspend your own company.');
-  tx(() => { run('UPDATE company SET name_cn=?,name_en=?,type=?,code=?,city=?,status=? WHERE id=?', f.name_cn, f.name_en, f.type, f.code, f.city, f.status, r.id); log(c, 'account', 'modify', `修改公司:${f.name_cn}`); });
+  const r = find('company', b.id, 'Company'); check(c.sys || companyAdmin(c, r.id));
+  tx(() => {
+   run('UPDATE company SET name_cn=?,name_en=?,type=?,code=?,city=?,address=?,contact=?,email=?,phone=? WHERE id=?', f.name_cn, f.name_en, f.type, f.code, f.city, f.address, f.contact, f.email, f.phone, r.id);
+   // Only the Chief Admin (or a System Admin for a company without one) decides whether System Admins manage its users and connections.
+   if (companyAdmin(c, r.id) && b.sys_manage_users !== undefined) run('UPDATE company SET sys_manage_users=?, sys_manage_connections=? WHERE id=?', bool(b.sys_manage_users), bool(b.sys_manage_connections), r.id);
+   log(c, 'account', 'modify', `修改公司:${f.name_cn}`, r.id);
+  });
   return {id: r.id};
+ },
+ 'company.status'(c, b) {
+  check(c.sys, 'Only a System Admin can suspend companies.'); const r = find('company', b.id, 'Company'); check(!r.operator, 'The operator company cannot be suspended.');
+  const status = r.status === 'normal' ? 'suspended' : 'normal';
+  tx(() => { run('UPDATE company SET status=? WHERE id=?', status, r.id); log(c, 'account', 'modify', `${status === 'normal' ? '恢复' : '暂停'}公司:${r.name_cn}`, r.id); });
+  return {status};
+ },
+ // System Admin assigns or replaces a company's Chief Admin.
+ 'company.chief'(c, b) {
+  check(c.sys, 'Only a System Admin assigns Chief Admins.'); const r = find('company', b.id, 'Company'); check(!r.operator, 'The operator company is run by its System Admins.');
+  const u = b.userId ? find('user', b.userId, 'User') : null; if (u) check(u.company_id === r.id && live(u), 'Choose an active user of this company.');
+  tx(() => {
+   for (const old of all(`SELECT id FROM user WHERE company_id=? AND position='chief'`, r.id)) run(`UPDATE user SET position='member', revision=revision+1 WHERE id=?`, old.id);
+   if (u) { run(`UPDATE user SET position='chief', level=1, revision=revision+1 WHERE id=?`, u.id); notify([u.id], 'access', `You are now Chief Admin of ${r.name_en || r.name_cn}.`); }
+   log(c, 'account', 'modify', `指定首席管理员:${r.name_cn} → ${u?.username ?? '(none)'}`, r.id);
+  });
+  return {};
  },
  'company.types'() { return COMPANY_TYPES; },
 
- // ---- User
+ // ---------------- User
  'user.list'(c, b) {
-  need(c, 'user'); const companyId = companyScope(c, b.companyId);
+  const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
   const state = ['normal', 'invalid'].includes(b.state) ? b.state : '';
   const rows = all(`SELECT * FROM user WHERE company_id=? ${state ? 'AND state=?' : ''} ORDER BY created_at`, ...(state ? [companyId, state] : [companyId]));
-  return {company: get('SELECT * FROM company WHERE id=?', companyId), users: rows.map(publicUser)};
+  return {company: get('SELECT * FROM company WHERE id=?', companyId), users: rows.map(publicUser), can_manage: managesUsers(c, companyId), can_invite: managesUsers(c, companyId)};
+ },
+ 'user.form'(c, b) {
+  const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
+  return {levels: all('SELECT level, name, description, perms FROM level WHERE company_id=? ORDER BY level', companyId).map(l => ({...l, perms: JSON.parse(l.perms)})),
+   perms: PERMS, admins: all(`SELECT id, username FROM user WHERE company_id=? AND position IN ('chief','useradmin') AND state='normal' ORDER BY username`, companyId),
+   can_appoint_useradmin: companyAdmin(c, companyId), can_appoint_system: c.sys && !!get('SELECT operator FROM company WHERE id=?', companyId)?.operator, my_level: c.user.level, my_perms: [...c.perms], sys: c.sys};
  },
  'user.get'(c, b) {
-  need(c, 'user'); const u = companyUser(c, b.id);
-  return {user: publicUser(u), roles: all('SELECT id,name FROM role WHERE company_id=? ORDER BY name', u.company_id), levels: LEVELS};
+  const u = find('user', b.id, 'User'); check(managesUsers(c, u.company_id) || u.id === c.user.id, 'User is unavailable.');
+  return {user: publicUser(u), ...(accountActions['user.form'](c, {companyId: u.company_id}) as Row)};
  },
- 'user.form'(c, b) { need(c, 'user'); const companyId = companyScope(c, b.companyId); return {roles: all('SELECT id,name FROM role WHERE company_id=? ORDER BY name', companyId), levels: LEVELS}; },
  async 'user.save'(c, b) {
-  need(c, 'user');
+  const existing = b.id ? manageableUser(c, b.id) : null;
+  const companyId = existing ? existing.company_id : companyScope(c, b.companyId, id => managesUsers(c, id));
   const f = {username: required(b.username, 'Name', 40), name_cn: text(b.name_cn, 80), name_en: text(b.name_en, 80), sex: ['M', 'F'].includes(b.sex) ? b.sex : '',
-   dept: text(b.dept, 200), email: text(b.email, 120), mobile: text(b.mobile, 40), level: LEVELS.includes(b.level) ? b.level : 'Normal User'};
+   dept: text(b.dept, 200), email: text(b.email, 120), mobile: text(b.mobile, 40), level: Number(b.level ?? 3), expires: date(b.expires, 'Expiry date'), responsible_id: text(b.responsible_id, 64) || null};
   check(/^[A-Za-z0-9._-]{2,40}$/.test(f.username), 'Name may contain 2–40 letters, numbers, dots, hyphens or underscores.');
   check(!f.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email), 'Email is not valid.');
-  const existing = b.id ? manageableUser(c, b.id) : null;
-  const companyId = existing ? existing.company_id : companyScope(c, b.companyId);
   check(!get('SELECT id FROM user WHERE username=? AND id<>?', f.username, existing?.id ?? ''), 'This name is already used by another account.');
-  const roleIds = ids(b.roleIds).filter(r => get('SELECT id FROM role WHERE id=? AND company_id=?', r, companyId));
-  let salt = '', pass = '';
-  if (!existing) { validPassword(b.password); salt = uid(); pass = await hashPassword(b.password, salt); }
+  const overrides: Record<string, boolean> = Object.fromEntries(PERMS.filter(k => typeof b.perms?.[k] === 'boolean').map(k => [k, b.perms[k]]));
+  checkGrant(c, companyId, f.level, overrides);
+  // Level 4 is temporary: it needs a future expiry date and a responsible administrator.
+  if (f.level === 4 || f.expires) {
+   check(f.expires && Date.parse(f.expires) > Date.now(), 'Temporary accounts need a future expiry date.');
+   const resp = f.responsible_id ? get(`SELECT * FROM user WHERE id=? AND company_id=? AND position IN ('chief','useradmin')`, f.responsible_id, companyId) : null;
+   check(resp || (c.sys && f.responsible_id === c.user.id), 'Temporary accounts need a responsible administrator.');
+  } else f.responsible_id = null;
+  let position = existing?.position ?? 'member';
+  if (b.position !== undefined && b.position !== position) {
+   const operator = !!get('SELECT operator FROM company WHERE id=?', companyId)?.operator;
+   const choices = c.sys && operator ? ['member', 'useradmin', 'system'] : companyAdmin(c, companyId) ? ['member', 'useradmin'] : [];
+   check(choices.includes(b.position) && choices.includes(position), b.position === 'chief' ? 'Chief Admins are assigned from the Company list.' : 'Only the Chief Admin appoints User Admins; only System Admins appoint System Admins.');
+   if (position === 'system') check(all(`SELECT id FROM user WHERE position='system' AND state='normal' AND id<>?`, existing!.id).length, 'Keep at least one active System Admin.');
+   position = b.position;
+  }
+  const pw = existing ? null : await newPassword(b.password);
   return tx(() => {
    const id = existing?.id ?? uid();
-   if (existing) run('UPDATE user SET username=?,name_cn=?,name_en=?,sex=?,dept=?,email=?,mobile=?,level=? WHERE id=?', f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.level, id);
-   else run('INSERT INTO user(id,company_id,username,name_cn,name_en,sex,dept,email,mobile,level,salt,pass,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)', id, companyId, f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.level, salt, pass, now());
-   run('DELETE FROM user_role WHERE user_id=?', id);
-   for (const r of roleIds) run('INSERT INTO user_role(user_id,role_id) VALUES(?,?)', id, r);
-   log(c, 'account', existing ? 'modify' : 'add', `${existing ? '修改' : '新增'}用户:${f.username}`);
+   if (existing) run('UPDATE user SET username=?,name_cn=?,name_en=?,sex=?,dept=?,email=?,mobile=?,level=?,perms=?,expires=?,responsible_id=?,position=?,revision=revision+? WHERE id=?',
+    f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.level, JSON.stringify(overrides), f.expires, f.responsible_id, position, position !== existing.position || f.level !== existing.level ? 1 : 0, id);
+   else run('INSERT INTO user(id,company_id,username,name_cn,name_en,sex,dept,email,mobile,level,perms,expires,responsible_id,position,salt,pass,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    id, companyId, f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.level, JSON.stringify(overrides), f.expires, f.responsible_id, position, pw!.salt, pw!.pass, now());
+   if (existing && (existing.level !== f.level || existing.perms !== JSON.stringify(overrides) || existing.position !== position)) notify([id], 'access', 'Your account access has changed.');
+   log(c, 'account', existing ? 'modify' : 'add', `${existing ? '修改' : '新增'}用户:${f.username} (${POSITION_LABEL[position]}, Level ${f.level})`, companyId);
    return {id};
   });
  },
+ // Invalid = departed: sessions end at once, history stays, unfinished approvals must be reassigned.
  'user.state'(c, b) {
-  need(c, 'user'); const u = manageableUser(c, b.id);
-  check(u.id !== c.user.id, 'You cannot deactivate your own account.');
-  const state = u.state === 'normal' ? 'invalid' : 'normal';
-  tx(() => { run('UPDATE user SET state=?,revision=revision+1 WHERE id=?', state, u.id); log(c, 'account', 'modify', `${state === 'invalid' ? '停用' : '启用'}用户:${u.username}`); });
-  return {state};
+  const u = manageableUser(c, b.id); const state = u.state === 'normal' ? 'invalid' : 'normal';
+  tx(() => {
+   run('UPDATE user SET state=?,revision=revision+1 WHERE id=?', state, u.id); run('DELETE FROM sessions WHERE user_id=?', u.id);
+   log(c, 'account', 'modify', `${state === 'invalid' ? '停用' : '启用'}用户:${u.username}`, u.company_id);
+   if (state === 'invalid') notify(all(`SELECT DISTINCT m.user_id FROM efile_member m JOIN efile_step_user s ON s.efile_id=m.efile_id AND s.user_id=? WHERE m.kind='admin'`, u.id).map(r => r.user_id), 'access', `${u.username} has left. Reassign their pending approvals.`);
+  });
+  return {state, pending: userEfiles(u.id).reduce((s, r) => s + r.pending, 0)};
  },
+ // Secure password reset: a one-time link, valid for one hour. Stored passwords are never shown.
  async 'user.reset'(c, b) {
-  need(c, 'user'); const u = manageableUser(c, b.id); validPassword(b.password);
-  const salt = uid(), pass = await hashPassword(b.password, salt);
-  tx(() => { run('UPDATE user SET salt=?,pass=?,revision=revision+1 WHERE id=?', salt, pass, u.id); log(c, 'account', 'modify', `重置密码:${u.username}`); });
+  const u = manageableUser(c, b.id); const token = uid() + uid();
+  run('UPDATE user SET reset_hash=?, reset_expires=? WHERE id=?', await digest(token), new Date(Date.now() + 3600000).toISOString(), u.id);
+  log(c, 'account', 'modify', `创建重置密码链接:${u.username}`, u.company_id);
+  return {link: `${publicOrigin}/#/reset?token=${token}`};
+ },
+ 'user.mfa.reset'(c, b) {
+  const u = manageableUser(c, b.id);
+  tx(() => { run(`UPDATE user SET totp_secret='', totp_pending='', revision=revision+1 WHERE id=?`, u.id); log(c, 'account', 'modify', `重置双重验证:${u.username}`, u.company_id); });
   return {};
  },
- // Hand-over tools from the user row menu.
+ 'user.efiles'(c, b) {
+  const u = find('user', b.id, 'User'); check(managesUsers(c, u.company_id) || u.id === c.user.id, 'User is unavailable.');
+  return {user: publicUser(u), efiles: userEfiles(u.id)};
+ },
+ // Remove or replace one user's role in one eFile. The replacement must be eligible (own staff or approved connection contact).
+ 'user.efile.change'(c, b) {
+  const u = manageableUser(c, b.id); const e = find('efile', b.efileId, 'eFile');
+  const to = b.to ? find('user', b.to, 'User') : null;
+  tx(() => changeEfileRole(c, u, e, text(b.kind, 20), to));
+  return {};
+ },
+ // Hand-over tools from the IMS user row menu.
  'user.transfer'(c, b) {
-  need(c, 'user'); const from = manageableUser(c, b.id);
-  const kind = text(b.kind, 40);
-  const needsTarget = kind !== 'groupDelete';
-  const to = needsTarget ? companyUser(c, b.to) : null;
-  if (to) check(to.id !== from.id, 'Choose a different user.');
+  const from = manageableUser(c, b.id); const kind = text(b.kind, 40);
+  const to = kind === 'groupDelete' ? null : find('user', b.to, 'User');
+  if (to) { check(to.id !== from.id && to.company_id === from.company_id && live(to), 'Choose another active user of the same company.'); }
   let count = 0;
-  const move = (table: string, extra = '') => { count += Number(run(`UPDATE OR IGNORE ${table} SET user_id=? WHERE user_id=? ${extra}`, to!.id, from.id).changes); run(`DELETE FROM ${table} WHERE user_id=? ${extra}`, from.id); };
-  const copy = (table: string, cols: string, extra = '') => { count += Number(run(`INSERT OR IGNORE INTO ${table}(${cols},user_id) SELECT ${cols},? FROM ${table} WHERE user_id=? ${extra}`, to!.id, from.id).changes); };
   tx(() => {
-   if (kind === 'participants') move('efile_member', "AND kind='participant'");
-   else if (kind === 'admins') move('efile_member', "AND kind='admin'");
-   else if (kind === 'process') { move('efile_step_user'); count += Number(run('UPDATE process_stage SET executor_id=? WHERE executor_id=?', to!.id, from.id).changes); }
+   const efiles = userEfiles(from.id);
+   const move = (k: string) => { for (const e of efiles) if (k === 'approver' ? e.is_approver : k === 'admin' ? e.is_admin : e.is_user) { changeEfileRole(c, from, find('efile', e.id), k, to); count++; } };
+   if (kind === 'participants') move('participant');
+   else if (kind === 'admins') move('admin');
+   else if (kind === 'process') { move('approver'); count += Number(run('UPDATE process_stage SET executor_id=? WHERE executor_id=?', to!.id, from.id).changes); }
    else if (kind === 'groupDelete') count += Number(run('DELETE FROM user_group_member WHERE user_id=?', from.id).changes);
-   else if (kind === 'copy') { copy('efile_member', 'efile_id,kind'); copy('user_efile', 'efile_id,in_my,hidden,mtt,link,color'); }
-   else if (kind === 'insert') { copy('efile_member', 'efile_id,kind'); copy('efile_step_user', 'efile_id,position'); copy('user_group_member', 'group_id'); }
-   else if (kind === 'replace') {
-    move('efile_member'); move('efile_step_user'); move('user_group_member');
-    count += Number(run('UPDATE process_stage SET executor_id=? WHERE executor_id=?', to!.id, from.id).changes);
-    run("UPDATE user SET state='invalid',revision=revision+1 WHERE id=?", from.id);
+   else if (kind === 'copy' || kind === 'insert') {
+    count += Number(run('INSERT OR IGNORE INTO efile_member(efile_id,kind,user_id,rights) SELECT efile_id,kind,?,rights FROM efile_member WHERE user_id=?', to!.id, from.id).changes);
+    if (kind === 'insert') { run('INSERT OR IGNORE INTO efile_step_user(efile_id,position,user_id) SELECT efile_id,position,? FROM efile_step_user WHERE user_id=?', to!.id, from.id); run('INSERT OR IGNORE INTO user_group_member(group_id,user_id) SELECT group_id,? FROM user_group_member WHERE user_id=?', to!.id, from.id); }
+   } else if (kind === 'replace') {
+    for (const k of ['participant', 'admin', 'approver']) move(k);
+    run('UPDATE OR IGNORE user_group_member SET user_id=? WHERE user_id=?', to!.id, from.id); run('DELETE FROM user_group_member WHERE user_id=?', from.id);
+    run('UPDATE process_stage SET executor_id=? WHERE executor_id=?', to!.id, from.id);
+    run(`UPDATE user SET state='invalid',revision=revision+1 WHERE id=?`, from.id); run('DELETE FROM sessions WHERE user_id=?', from.id);
    } else check(false, 'This function is not available.');
-   log(c, 'account', 'modify', `用户移交(${kind}):${from.username}${to ? '→' + to.username : ''}`);
+   log(c, 'account', 'modify', `用户移交(${kind}):${from.username}${to ? '→' + to.username : ''}`, from.company_id);
   });
   return {count};
  },
  'user.links.get'(c, b) {
-  need(c, 'user'); const u = companyUser(c, b.id);
-  return {efiles: all('SELECT id,name FROM efile WHERE company_id=? AND archived=0 ORDER BY name', u.company_id), selected: all('SELECT efile_id FROM user_efile WHERE user_id=? AND link=1', u.id).map(r => r.efile_id)};
+  const u = manageableUser(c, b.id);
+  return {efiles: userEfiles(u.id).map(e => ({id: e.id, name: e.name})), selected: all('SELECT efile_id FROM user_efile WHERE user_id=? AND link=1', u.id).map(r => r.efile_id)};
  },
  'user.links.save'(c, b) {
-  need(c, 'user'); const u = companyUser(c, b.id);
-  const chosen = ids(b.efileIds).filter(e => get('SELECT id FROM efile WHERE id=? AND company_id=?', e, u.company_id));
+  const u = manageableUser(c, b.id); const allowedIds = new Set(userEfiles(u.id).map(e => e.id));
   tx(() => {
    run('UPDATE user_efile SET link=0 WHERE user_id=?', u.id);
-   for (const e of chosen) run('INSERT INTO user_efile(user_id,efile_id,in_my,link) VALUES(?,?,0,1) ON CONFLICT(user_id,efile_id) DO UPDATE SET link=1', u.id, e);
-   log(c, 'account', 'modify', `分配eFile链接:${u.username}`);
+   for (const e of ids(b.efileIds).filter(x => allowedIds.has(x))) run('INSERT INTO user_efile(user_id,efile_id,link) VALUES(?,?,1) ON CONFLICT(user_id,efile_id) DO UPDATE SET link=1', u.id, e);
+   log(c, 'account', 'modify', `分配eFile链接:${u.username}`, u.company_id);
   });
   return {};
  },
 
- // ---- Role
+ // ---------------- Registration QR codes
+ async 'invite.list'(c, b) {
+  const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
+  const rows = all('SELECT * FROM invite WHERE company_id=? ORDER BY created_at DESC LIMIT 50', companyId);
+  return Promise.all(rows.map(async r => {
+   const url = `${publicOrigin}/#/register?token=${r.token}`, usable = r.active && Date.parse(r.expires) > Date.now();
+   return {id: r.id, url, expires: r.expires, active: !!r.active, usable, qr: usable ? await QRCode.toDataURL(url, {margin: 1, width: 220}) : ''};
+  }));
+ },
+ 'invite.create'(c, b) {
+  const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
+  const days = Math.min(Math.max(Number(b.days) || 7, 1), 30);
+  const id = uid(), token = (uid() + uid()).replace(/-/g, '');
+  tx(() => { run('INSERT INTO invite(id,company_id,token,created_by,expires,created_at) VALUES(?,?,?,?,?,?)', id, companyId, token, c.user.id, new Date(Date.now() + days * 86400000).toISOString(), now()); log(c, 'account', 'add', `创建注册二维码 (${days}天)`, companyId); });
+  return {id};
+ },
+ 'invite.revoke'(c, b) {
+  const r = find('invite', b.id, 'Invitation'); check(managesUsers(c, r.company_id));
+  tx(() => { run('UPDATE invite SET active=0 WHERE id=?', r.id); log(c, 'account', 'remove', '撤销注册二维码', r.company_id); });
+  return {};
+ },
+
+ // ---------------- Role = the company's four authorization levels
  'role.list'(c, b) {
-  need(c, 'role');
-  const rows = c.sys && !b.companyId ? all('SELECT r.*, c.name_cn AS company FROM role r JOIN company c ON c.id=r.company_id ORDER BY c.created_at, r.name')
-   : all('SELECT r.*, c.name_cn AS company FROM role r JOIN company c ON c.id=r.company_id WHERE r.company_id=? ORDER BY r.name', companyScope(c, b.companyId));
-  return rows.map(r => ({...r, perms: JSON.parse(r.perms)}));
+  const companyId = companyScope(c, b.companyId, id => companyAdmin(c, id) || managesUsers(c, id));
+  return {company: get('SELECT id,name_cn,name_en FROM company WHERE id=?', companyId), can_edit: companyAdmin(c, companyId), perms: PERMS,
+   levels: all('SELECT l.*, (SELECT COUNT(*) FROM user u WHERE u.company_id=l.company_id AND u.level=l.level) AS users FROM level l WHERE company_id=? ORDER BY level', companyId).map(l => ({...l, id: String(l.level), perms: JSON.parse(l.perms)}))};
  },
- 'role.get'(c, b) { need(c, 'role'); const r = find('role', b.id, 'Role'); sameCompany(c, r.company_id); return {...r, perms: JSON.parse(r.perms), permissions: ALL_PERMS}; },
  'role.save'(c, b) {
-  need(c, 'role');
-  const f = {name: required(b.name, 'Role Name', 80), description: text(b.description, 300), share: bool(b.share), perms: JSON.stringify((Array.isArray(b.perms) ? b.perms : []).filter((p: any) => (ALL_PERMS as readonly string[]).includes(p)))};
-  return tx(() => {
-   if (b.id) {
-    const r = find('role', b.id, 'Role'); sameCompany(c, r.company_id);
-    run('UPDATE role SET name=?,description=?,share=?,perms=? WHERE id=?', f.name, f.description, f.share, f.perms, r.id);
-    log(c, 'account', 'modify', `修改角色:${f.name}`); return {id: r.id};
-   }
-   const id = uid(); run('INSERT INTO role(id,company_id,name,description,share,perms) VALUES(?,?,?,?,?,?)', id, companyScope(c, b.companyId), f.name, f.description, f.share, f.perms);
-   log(c, 'account', 'add', `新增角色:${f.name}`); return {id};
+  const companyId = companyScope(c, b.companyId, id => companyAdmin(c, id));
+  const level = Number(b.level); check([1, 2, 3, 4].includes(level));
+  const perms = (Array.isArray(b.perms) ? b.perms : []).filter((p: any) => (PERMS as readonly string[]).includes(p));
+  if (level === 4) check(!perms.some((p: string) => ['efileAdmin', 'approve'].includes(p)), 'Temporary accounts (Level 4) cannot administer eFiles or approve.');
+  tx(() => {
+   run('UPDATE level SET name=?, description=?, perms=? WHERE company_id=? AND level=?', required(b.name, 'Name', 80), text(b.description, 300), JSON.stringify(perms), companyId, level);
+   for (const u of all('SELECT id FROM user WHERE company_id=? AND level=?', companyId, level)) run('UPDATE user SET revision=revision+1 WHERE id=?', u.id);
+   log(c, 'account', 'modify', `修改权限级别:Level ${level} (${perms.join(', ')})`, companyId);
   });
- },
- 'role.delete'(c, b) {
-  need(c, 'role'); const r = find('role', b.id, 'Role'); sameCompany(c, r.company_id);
-  check(!get('SELECT 1 FROM user_role WHERE role_id=?', r.id), 'Remove this role from its users before deleting it.');
-  tx(() => { run('DELETE FROM role WHERE id=?', r.id); log(c, 'account', 'remove', `删除角色:${r.name}`); });
   return {};
  },
  'role.users'(c, b) {
-  need(c, 'role'); const r = find('role', b.id, 'Role'); sameCompany(c, r.company_id);
-  return {role: r, users: all('SELECT u.* FROM user u JOIN user_role ur ON ur.user_id=u.id WHERE ur.role_id=? ORDER BY u.username', r.id).map(publicUser)};
+  const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
+  return {role: {name: levelName(companyId, Number(b.level))}, users: all('SELECT * FROM user WHERE company_id=? AND level=? ORDER BY username', companyId, Number(b.level)).map(publicUser)};
  },
 
- // ---- User Group
- 'group.list'(c, b) { need(c, 'group'); return all('SELECT g.*, (SELECT COUNT(*) FROM user_group_member m WHERE m.group_id=g.id) AS members FROM user_group g WHERE company_id=? ORDER BY name', companyScope(c, b.companyId)); },
+ // ---------------- User Group (company groups; external members only from approved connections)
+ 'group.list'(c, b) {
+  const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
+  return all('SELECT g.*, (SELECT COUNT(*) FROM user_group_member m WHERE m.group_id=g.id) AS members FROM user_group g WHERE company_id=? ORDER BY name', companyId);
+ },
  'group.get'(c, b) {
-  need(c, 'group'); const g = find('user_group', b.id, 'Group'); sameCompany(c, g.company_id);
-  return {...g, members: all('SELECT user_id FROM user_group_member WHERE group_id=?', g.id).map(r => r.user_id)};
+  const g = find('user_group', b.id, 'Group'); check(managesUsers(c, g.company_id));
+  return {...g, members: all('SELECT u.id, u.username AS label FROM user u JOIN user_group_member m ON m.user_id=u.id WHERE m.group_id=? ORDER BY u.username', g.id), efiles: groupEfiles(g.id)};
  },
  'group.save'(c, b) {
-  need(c, 'group');
-  const name = required(b.name, 'Name', 80), share = bool(b.share);
+  const g = b.id ? find('user_group', b.id, 'Group') : null;
+  const companyId = g ? g.company_id : companyScope(c, b.companyId, id => managesUsers(c, id)); check(managesUsers(c, companyId));
+  const name = required(b.name, 'Name', 80);
+  const members = ids(b.members); for (const u of members) check(eligibleContact(companyId, u), 'External members must be approved connection contacts.');
   return tx(() => {
-   let g = b.id ? find('user_group', b.id, 'Group') : null; if (g) sameCompany(c, g.company_id);
-   const companyId = g ? g.company_id : companyScope(c, b.companyId);
-   const members = ids(b.members).filter(u => get('SELECT id FROM user WHERE id=? AND company_id=?', u, companyId));
    const id = g?.id ?? uid();
-   if (g) run('UPDATE user_group SET name=?,share=? WHERE id=?', name, share, id); else run('INSERT INTO user_group(id,company_id,name,share) VALUES(?,?,?,?)', id, companyId, name, share);
+   if (g) run('UPDATE user_group SET name=?,share=? WHERE id=?', name, bool(b.share), id); else run('INSERT INTO user_group(id,company_id,name,share) VALUES(?,?,?,?)', id, companyId, name, bool(b.share));
+   const before = new Set(all('SELECT user_id FROM user_group_member WHERE group_id=?', id).map(r => r.user_id));
    run('DELETE FROM user_group_member WHERE group_id=?', id);
    for (const u of members) run('INSERT INTO user_group_member(group_id,user_id) VALUES(?,?)', id, u);
-   log(c, 'account', g ? 'modify' : 'add', `${g ? '修改' : '新增'}用户组:${name}`);
+   const changed = [...members.filter(u => !before.has(u)), ...[...before].filter(u => !members.includes(u))];
+   if (changed.length) notify(changed, 'access', `Your eFile access changed through group ${name}.`);
+   log(c, 'account', g ? 'modify' : 'add', `${g ? '修改' : '新增'}用户组:${name} (${members.length}人)`, companyId);
    return {id};
   });
  },
  'group.delete'(c, b) {
-  need(c, 'group'); const g = find('user_group', b.id, 'Group'); sameCompany(c, g.company_id);
-  tx(() => { run('DELETE FROM user_group WHERE id=?', g.id); log(c, 'account', 'remove', `删除用户组:${g.name}`); });
+  const g = find('user_group', b.id, 'Group'); check(managesUsers(c, g.company_id));
+  tx(() => { run('DELETE FROM user_group WHERE id=?', g.id); log(c, 'account', 'remove', `删除用户组:${g.name}`, g.company_id); });
   return {};
  },
  'group.users'(c, b) {
-  need(c, 'group'); const g = find('user_group', b.id, 'Group'); sameCompany(c, g.company_id);
+  const g = find('user_group', b.id, 'Group'); check(managesUsers(c, g.company_id));
   return {group: g, users: all('SELECT u.* FROM user u JOIN user_group_member m ON m.user_id=u.id WHERE m.group_id=? ORDER BY u.username', g.id).map(publicUser)};
  },
- 'group.efiles'(c, b) {
-  need(c, 'group'); const g = find('user_group', b.id, 'Group'); sameCompany(c, g.company_id);
-  return {group: g, efiles: all(`SELECT DISTINCT e.id,e.name,e.color,e.highlight FROM efile e JOIN efile_group eg ON eg.efile_id=e.id WHERE eg.group_id=? ORDER BY e.name`, g.id)};
+ 'group.efiles'(c, b) { const g = find('user_group', b.id, 'Group'); check(managesUsers(c, g.company_id)); return {group: g, efiles: groupEfiles(g.id)}; },
+
+ // ---------------- Connection (client-to-client, both companies confirm)
+ 'connection.list'(c, b) {
+  const companyId = companyScope(c, b.companyId, id => managesConnections(c, id));
+  const rows = all(`SELECT cn.*, f.name_cn AS from_name, t.name_cn AS to_name FROM connection cn JOIN company f ON f.id=cn.from_company JOIN company t ON t.id=cn.to_company
+   WHERE cn.from_company=? OR cn.to_company=? ORDER BY cn.updated_at DESC`, companyId, companyId);
+  return {companyId, can_manage: managesConnections(c, companyId), connections: rows.map(r => ({...r, incoming: r.to_company === companyId,
+   other: r.to_company === companyId ? r.from_name : r.to_name,
+   mine: all('SELECT u.id, u.username AS label FROM connection_user cu JOIN user u ON u.id=cu.user_id WHERE cu.connection_id=? AND u.company_id=?', r.id, companyId),
+   theirs: all('SELECT u.id, u.username AS label, u.name_en, u.dept FROM connection_user cu JOIN user u ON u.id=cu.user_id WHERE cu.connection_id=? AND u.company_id<>?', r.id, companyId)})),
+   companies: all('SELECT id, name_cn, name_en, code FROM company WHERE id<>? AND status=? ORDER BY name_cn', companyId, 'normal')};
+ },
+ 'connection.request'(c, b) {
+  const from = companyScope(c, b.companyId, id => managesConnections(c, id)); const to = find('company', b.to, 'Company');
+  check(to.id !== from, 'Choose another company.');
+  check(!get(`SELECT 1 FROM connection WHERE status<>'revoked' AND ((from_company=? AND to_company=?) OR (from_company=? AND to_company=?))`, from, to.id, to.id, from), 'A connection with this company already exists.');
+  const id = uid(), t = now();
+  tx(() => {
+   run('INSERT INTO connection(id,from_company,to_company,status,note,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', id, from, to.id, 'requested', text(b.note, 300), t, t);
+   for (const u of ids(b.users).filter(u => get('SELECT 1 FROM user WHERE id=? AND company_id=?', u, from))) run('INSERT INTO connection_user(connection_id,user_id) VALUES(?,?)', id, u);
+   notify(connectionManagers(to.id), 'connection', `Connection request from ${get('SELECT name_cn FROM company WHERE id=?', from)!.name_cn}`);
+   log(c, 'account', 'add', `申请公司连接:${to.name_cn}`, from);
+  });
+  return {id};
+ },
+ // Accept (receiving company only), revoke (either side), and designate this side's staff.
+ 'connection.update'(c, b) {
+  const cn = find('connection', b.id, 'Connection');
+  const side = companyScope(c, b.companyId, id => managesConnections(c, id)); check([cn.from_company, cn.to_company].includes(side));
+  tx(() => {
+   if (b.status === 'connected') { check(cn.status === 'requested' && side === cn.to_company, 'Only the receiving company can accept.'); run(`UPDATE connection SET status='connected',updated_at=? WHERE id=?`, now(), cn.id); notify(connectionManagers(cn.from_company), 'connection', 'Your connection request was accepted.'); }
+   else if (b.status === 'revoked') { run(`UPDATE connection SET status='revoked',updated_at=? WHERE id=?`, now(), cn.id); notify(connectionManagers(side === cn.from_company ? cn.to_company : cn.from_company), 'connection', 'A company connection was revoked.'); }
+   if (Array.isArray(b.users)) {
+    run('DELETE FROM connection_user WHERE connection_id=? AND user_id IN (SELECT id FROM user WHERE company_id=?)', cn.id, side);
+    for (const u of ids(b.users).filter(u => get('SELECT 1 FROM user WHERE id=? AND company_id=?', u, side))) run('INSERT INTO connection_user(connection_id,user_id) VALUES(?,?)', cn.id, u);
+   }
+   log(c, 'account', 'modify', `更新公司连接:${b.status ?? '指定人员'}`, side);
+  });
+  return {};
  },
 
- // ---- System Log
+ // ---------------- System Log
  'log.list'(c, b) {
-  need(c, 'log');
-  const companyId = companyScope(c, b.companyId);
+  const companyId = companyScope(c, b.companyId, id => viewsLog(c, id));
   const from = date(b.from, 'Time') || '0000-01-01', to = date(b.to, 'Time') || '9999-12-31';
-  const who = `%${text(b.user, 80)}%`, what = `%${text(b.content, 200)}%`;
   return all(`SELECT * FROM system_log WHERE company_id=? AND at>=? AND at<? AND user_label LIKE ? AND content LIKE ? ORDER BY at DESC LIMIT 5000`,
-   companyId, from, to + 'T99', who, what);
+   companyId, from, to + 'T99', `%${text(b.user, 80)}%`, `%${text(b.content, 200)}%`);
  },
 
- // ---- Client Management
- 'client.list'(c) { need(c, 'client'); return all('SELECT * FROM client WHERE company_id=? ORDER BY code', c.companyId); },
- 'client.get'(c, b) { need(c, 'client'); const r = find('client', b.id, 'Client'); sameCompany(c, r.company_id); return r; },
+ // ---------------- Client Management
+ 'client.list'(c) { needPerm(c, 'client'); return all('SELECT * FROM client WHERE company_id=? ORDER BY code', c.companyId); },
+ 'client.get'(c, b) { needPerm(c, 'client'); const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId); return r; },
  'client.save'(c, b) {
-  need(c, 'client');
+  needPerm(c, 'client');
   const f = [required(b.code, 'Code', 40), text(b.name_cn, 120), text(b.name_en, 120), text(b.contact, 80), text(b.phone, 40), text(b.email, 120), text(b.address, 300), text(b.remark, 2000)];
   check(f[1] || f[2], 'Enter a CN Name or EN Name.');
   return tx(() => {
    if (b.id) {
-    const r = find('client', b.id, 'Client'); sameCompany(c, r.company_id);
-    run('UPDATE client SET code=?,name_cn=?,name_en=?,contact=?,phone=?,email=?,address=?,remark=? WHERE id=?', ...f, r.id);
-    log(c, 'client', 'modify', `修改客户:${f[0]}`); return {id: r.id};
+    const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId);
+    run('UPDATE client SET code=?,name_cn=?,name_en=?,contact=?,phone=?,email=?,address=?,remark=? WHERE id=?', ...f, r.id); log(c, 'client', 'modify', `修改客户:${f[0]}`); return {id: r.id};
    }
    check(!get('SELECT id FROM client WHERE company_id=? AND code=?', c.companyId, f[0]), 'This client code is already used.');
    const id = uid(); run('INSERT INTO client(id,company_id,code,name_cn,name_en,contact,phone,email,address,remark) VALUES(?,?,?,?,?,?,?,?,?,?)', id, c.companyId, ...f);
@@ -228,18 +364,52 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
   });
  },
  'client.delete'(c, b) {
-  need(c, 'client'); const r = find('client', b.id, 'Client'); sameCompany(c, r.company_id);
-  tx(() => { run('DELETE FROM client WHERE id=?', r.id); log(c, 'client', 'remove', `删除客户:${r.code}`); });
-  return {};
+  needPerm(c, 'client'); const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId);
+  tx(() => { run('DELETE FROM client WHERE id=?', r.id); log(c, 'client', 'remove', `删除客户:${r.code}`); }); return {};
  },
 
- // ---- Pickers: people and groups a user may choose from.
- 'directory'(c) {
-  return {
-   users: all(`SELECT id,username,name_cn,name_en,dept FROM user WHERE company_id=? AND state='normal' ORDER BY username`, c.companyId).map(u => ({...u, label: userLabel(u)})),
-   groups: all('SELECT id,name FROM user_group WHERE company_id=? ORDER BY name', c.companyId),
-  };
+ // ---------------- People pickers: own company plus approved connection contacts (finding someone grants nothing else).
+ 'directory'(c, b) {
+  const companyId = b.companyId ? companyScope(c, b.companyId, id => managesUsers(c, id)) : c.companyId;
+  const own = all(`SELECT u.id,u.username,u.name_cn,u.name_en,u.dept,u.company_id,u.expires,u.state FROM user u WHERE u.company_id=? ORDER BY u.username`, companyId).filter(u => live(u));
+  const external = companyId === c.companyId ? connectedUserIds(c).map(id => get('SELECT u.id,u.username,u.name_cn,u.name_en,u.dept,u.company_id,u.expires,u.state, c.name_cn AS company FROM user u JOIN company c ON c.id=u.company_id WHERE u.id=?', id)).filter(u => u && live(u)) as Row[] : [];
+  return {users: [...own, ...external].map(u => ({id: u.id, username: u.username, label: userLabel(u), company: u.company ?? '', external: u.company_id !== companyId})),
+   groups: all('SELECT id,name FROM user_group WHERE company_id=? ORDER BY name', companyId)};
  },
- // ---- Own profile
  'profile.get'(c) { return publicUser(c.user); },
 };
+
+function changeEfileRole(c: Ctx, u: Row, e: Row, kind: string, to: Row | null) {
+ check(['participant', 'admin', 'approver'].includes(kind));
+ if (to) check(eligibleContact(e.company_id, to.id), 'The replacement is not an approved contact for this eFile.');
+ if (to && kind === 'approver') check(userPerms(to).has('approve'), `${to.username} does not hold the approval function.`);
+ if (to && kind === 'admin') check(userPerms(to).has('efileAdmin'), `${to.username} does not hold the eFile administration function.`);
+ if (kind === 'approver') {
+  for (const s of all('SELECT position FROM efile_step_user WHERE efile_id=? AND user_id=?', e.id, u.id)) {
+   run('DELETE FROM efile_step_user WHERE efile_id=? AND position=? AND user_id=?', e.id, s.position, u.id);
+   if (to) run('INSERT OR IGNORE INTO efile_step_user(efile_id,position,user_id) VALUES(?,?,?)', e.id, s.position, to.id);
+  }
+  // Unfinished approvals move to the replacement; without one they pause until an administrator assigns someone.
+  for (const s of all(`SELECT s.* FROM item_step s JOIN item i ON i.id=s.item_id AND i.round=s.round WHERE i.efile_id=? AND i.status='pending' AND s.decision IS NULL`, e.id)) {
+   const list: string[] = JSON.parse(s.approvers); if (!list.includes(u.id)) continue;
+   const next = list.filter(x => x !== u.id); if (to && !next.includes(to.id)) next.push(to.id);
+   run('UPDATE item_step SET approvers=? WHERE item_id=? AND round=? AND position=?', JSON.stringify(next), s.item_id, s.round, s.position);
+  }
+ } else {
+  const rights = get('SELECT rights FROM efile_member WHERE efile_id=? AND kind=? AND user_id=?', e.id, kind, u.id)?.rights ?? 'edit';
+  run('DELETE FROM efile_member WHERE efile_id=? AND kind=? AND user_id=?', e.id, kind, u.id);
+  if (to) run('INSERT OR IGNORE INTO efile_member(efile_id,kind,user_id,rights) VALUES(?,?,?,?)', e.id, kind, to.id, rights);
+  if (kind === 'admin') check(liveAdmins(e.id).length || liveChief(e.company_id) || all(`SELECT 1 FROM user WHERE position='system' AND state='normal'`).length, 'An eFile must keep an administrator.');
+ }
+ notify([u.id, to?.id], 'access', `eFile access changed: ${e.name}`, e.id);
+ log(c, 'account', 'modify', `${to ? '替换' : '移除'}eFile角色(${kind}):${e.name} ${u.username}${to ? '→' + to.username : ''}`, u.company_id);
+}
+function groupEfiles(groupId: string) {
+ return all(`SELECT DISTINCT e.id,e.name,e.color,e.highlight,eg.rights FROM efile e JOIN efile_group eg ON eg.efile_id=e.id WHERE eg.group_id=? AND eg.kind='participant' ORDER BY e.name`, groupId);
+}
+function connectionManagers(companyId: string) {
+ const local = all(`SELECT id FROM user WHERE company_id=? AND position IN ('chief','useradmin') AND state='normal'`, companyId).map(u => u.id);
+ const co = get('SELECT * FROM company WHERE id=?', companyId)!;
+ return co.sys_manage_connections || !liveChief(companyId) ? [...local, ...all(`SELECT id FROM user WHERE position='system' AND state='normal'`).map(u => u.id)] : local;
+}
+export {userManagers};

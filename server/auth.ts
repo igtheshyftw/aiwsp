@@ -24,11 +24,13 @@ const cookieName = 'ims_session';
 const readCookie = (req: Request) => req.headers.get('cookie')?.split(';').map(x => x.trim()).find(x => x.startsWith(cookieName + '='))?.slice(cookieName.length + 1);
 export const cookieHeader = (token: string, maxAge = 43200) => `${cookieName}=${token}; Path=/; HttpOnly; ${configuredOrigin.protocol === 'https:' ? 'Secure; ' : ''}SameSite=Lax; Max-Age=${maxAge}`;
 
+// A user can act only while the account is normal, not expired, and the company is active.
+export const live = (u: any, companyStatus = 'normal') => u && u.state === 'normal' && companyStatus === 'normal' && (!u.expires || Date.parse(u.expires) > Date.now());
 export async function sessionUser(req: Request) {
  const token = readCookie(req); if (!token) return null;
  const s = get('SELECT * FROM sessions WHERE id=? AND expires>?', await digest(token), Date.now()); if (!s) return null;
- const u = get(`SELECT u.* FROM user u JOIN company c ON c.id=u.company_id WHERE u.id=? AND u.revision=? AND u.state='normal' AND c.status='normal'`, s.user_id, s.revision);
- return u;
+ const u = get(`SELECT u.*, c.status AS company_status FROM user u JOIN company c ON c.id=u.company_id WHERE u.id=? AND u.revision=?`, s.user_id, s.revision);
+ return live(u, u?.company_status) ? u : null;
 }
 export async function createSession(u: {id: string, revision: number}) {
  const token = uid() + uid();
@@ -44,19 +46,45 @@ export async function throttle(req: Request, action: string) {
  run('DELETE FROM throttle WHERE expires<?', Date.now());
 }
 
-export const ALL_PERMS = ['company', 'user', 'role', 'group', 'log', 'client', 'efile'] as const;
+// Function checkboxes that make up an authorization level. Viewing is implied by eFile membership.
+export const PERMS = ['createFile', 'createItem', 'edit', 'download', 'export', 'submit', 'approve', 'efileAdmin', 'client'] as const;
+export const DEFAULT_LEVELS: [number, string, string, string[]][] = [
+ [1, 'Level 1', 'Full functions', [...PERMS]],
+ [2, 'Level 2', 'All functions except client management', PERMS.filter(p => p !== 'client')],
+ [3, 'Level 3', 'Default for new users', ['createFile', 'createItem', 'edit', 'download', 'submit', 'approve']],
+ [4, 'Level 4', 'Temporary account: view only, needs an expiry date and a responsible administrator', []],
+];
+export function seedLevels(companyId: string) {
+ for (const [level, name, description, perms] of DEFAULT_LEVELS) run('INSERT OR IGNORE INTO level(company_id,level,name,description,perms) VALUES(?,?,?,?,?)', companyId, level, name, description, JSON.stringify(perms));
+}
 
-// First start: create the operating company, its two standard roles and the administrator from the environment.
+// First start: create the operator (WSP) company and its first named System Admin from the environment.
 export async function initialize() {
  if (get('SELECT id FROM user LIMIT 1')) return;
  const pw = process.env.ADMIN_PASSWORD || ''; validPassword(pw);
  const username = (process.env.ADMIN_USERNAME || 'admin').trim();
  check(/^[A-Za-z0-9._-]{2,40}$/.test(username), 'ADMIN_USERNAME must have 2–40 letters, numbers, dots, hyphens or underscores.');
- const company = uid(), admin = uid(), acAdmin = uid(), standard = uid(), salt = uid(), t = now();
- run('INSERT INTO company(id,name_cn,name_en,type,code,city,status,created_at) VALUES(?,?,?,?,?,?,?,?)', company, process.env.COMPANY_NAME_CN || process.env.COMPANY_NAME || 'IMS', process.env.COMPANY_NAME || 'IMS', 'Communicative', process.env.COMPANY_CODE || '', '', 'normal', t);
- run('INSERT INTO role(id,company_id,name,description,perms) VALUES(?,?,?,?,?)', acAdmin, company, 'A/C Administrator', 'Company account administrator - with all authorisation', JSON.stringify(ALL_PERMS));
- run('INSERT INTO role(id,company_id,name,description,perms) VALUES(?,?,?,?,?)', standard, company, 'Standard users', 'Without authorisation to set up company account, user, role, user group and view system log', JSON.stringify(['client', 'efile']));
- run(`INSERT INTO user(id,company_id,username,name_cn,name_en,email,level,system_admin,salt,pass,created_at) VALUES(?,?,?,?,?,?,'Administrator',1,?,?,?)`, admin, company, username, process.env.ADMIN_NAME || username, process.env.ADMIN_NAME || username, process.env.ADMIN_EMAIL || '', salt, await hashPassword(pw, salt), t);
- run('INSERT INTO user_role(user_id,role_id) VALUES(?,?)', admin, acAdmin);
- console.log('Initial administrator created. Sign in with the configured username and password.');
+ const company = uid(), admin = uid(), salt = uid(), t = now();
+ run(`INSERT INTO company(id,name_cn,name_en,code,status,operator,created_at) VALUES(?,?,?,?,'normal',1,?)`, company, process.env.COMPANY_NAME_CN || process.env.COMPANY_NAME || 'WSP', process.env.COMPANY_NAME || 'WSP', process.env.COMPANY_CODE || '', t);
+ seedLevels(company);
+ run(`INSERT INTO user(id,company_id,username,name_cn,name_en,email,position,level,salt,pass,created_at) VALUES(?,?,?,?,?,?,'system',1,?,?,?)`, admin, company, username, process.env.ADMIN_NAME || username, process.env.ADMIN_NAME || username, process.env.ADMIN_EMAIL || '', salt, await hashPassword(pw, salt), t);
+ console.log('Initial System Admin created. Sign in with the configured username and password.');
 }
+
+// Time-based one-time passwords (RFC 6238) for administrator multi-factor authentication.
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+export function totpSecret() { const a = crypto.getRandomValues(new Uint8Array(20)); let bits = 0, value = 0, out = ''; for (const b of a) { value = (value << 8) | b; bits += 8; while (bits >= 5) { out += B32[(value >>> (bits - 5)) & 31]; bits -= 5; } } return out; }
+export async function totpValid(secret: string, code: any) {
+ if (!secret || !/^\d{6}$/.test(String(code ?? ''))) return false;
+ let bits = 0, value = 0; const bytes: number[] = [];
+ for (const ch of secret) { value = (value << 5) | B32.indexOf(ch); bits += 5; if (bits >= 8) { bytes.push((value >>> (bits - 8)) & 255); bits -= 8; } }
+ const key = await crypto.subtle.importKey('raw', new Uint8Array(bytes), {name: 'HMAC', hash: 'SHA-1'}, false, ['sign']);
+ for (const off of [-1, 0, 1]) {
+  const buf = new ArrayBuffer(8); new DataView(buf).setBigUint64(0, BigInt(Math.floor(Date.now() / 30000) + off));
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf)); const o = sig[19] & 15;
+  const n = (((sig[o] & 127) << 24) | (sig[o + 1] << 16) | (sig[o + 2] << 8) | sig[o + 3]) % 1000000;
+  if (equal(String(n).padStart(6, '0'), String(code))) return true;
+ }
+ return false;
+}
+export const requireAdminMfa = () => process.env.REQUIRE_ADMIN_MFA !== 'false';
