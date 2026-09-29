@@ -20,14 +20,47 @@ Legend: ✅ already in AiWSP · 🟡 partly there · ❌ missing · ❓ need mor
 
 ## IMS → My eFile (`My eFile List`)
 
-- Single "Name" column with a checkbox per row for bulk actions; row background colours (blue, teal, green, white) look user-assigned.
-- Icons after a name: ⚙⚙ (probably an approval workflow or automation) and ✱ (probably favourite or required). **❓ confirm what they mean.**
-- Header toolbar, left to right: ＋ add, ▦ (view/columns?), 📁 folder, ◌ (loading/refresh?), red 🔨/pin, ⚙ settings, ✱. **❓ hover or click each one and capture.**
-- A search box with a 🔒 "locked search" button.
-- Page header has its own search and refresh.
-- Sample eFiles: DEMO, Test ×2, Expense Claim Demo A/B, Payment eFile, Project summative, Tasks that need intern's assistance.
+- Single "Name" column with a checkbox per row for bulk actions. Row background comes from the eFile's **Color** setting (named palette entries such as "Personalised 3"); **Highlight** probably makes the name bold.
+- Markers after a name: ⚙⚙ uses the same icon as the "eFile Process Monitor" menu entry and ✱ the same as "Set Process", so they probably mean "has confirmation steps" and "has a process". **❓ confirm.**
+- Header toolbar, left to right: ＋ add, ▦, 📁 folder, ◌, red 🔨, ⚙, ✱. **❓ what each one does.**
+- A search box with a 🔒 "locked search" button. The page header has its own search and refresh.
+- Row "≡" menu: **View**, **Edit**, **Delete**, **Set Confirmation**, **Set Process**, **X Process Set** (clear the process?), **Set Grand Balance/Sum**, **eFile Process Monitor**, **Copy And Share**, **Cancel Share**, **Copy eFile**.
 
-AiWSP: ✅ eFile lists, folders, favourites, pinning, locked searches, colour. 🟡 toolbar parity and icon meanings to be confirmed.
+AiWSP: 🟡 has eFile lists, folders, favourites, pinning, locked searches and colour, but its eFile model differs (see setup below).
+
+## eFile setup (`eFile Setup Adminstration`, the Edit/View form)
+
+Fields seen (the capture was cut off after the last one):
+
+| Field | Example | Notes |
+|---|---|---|
+| Name | Expense Claim Demo - A | |
+| Tag | (empty) | free text? |
+| Select Type | User And Group | who can take part: users, groups, or both |
+| Participants | list of usernames | semicolon-separated in the display |
+| Group | (empty) | user groups taking part |
+| Administrators | list of usernames | subset of participants |
+| Highlight | No | yes/no |
+| Color | Personalised 3 | named palette |
+| 1st–5th Confirmation | one user per step (Michelle, Michael, William, Michael) | **up to 5 sequential sign-off steps**; the same person can appear twice |
+| Report Name | (empty) | |
+| Item Type | Number | ❓ other values (text? date?) |
+| Balance/Sum | 0.00 | opening balance |
+| Balance/Sum Alias | Amount Payable to A | label of the running-total row |
+| Notional Balance/Sum | 0.00 | second, "notional" total |
+| Notional Balance/Sum Alias | … | |
+| … | | **❓ scroll down and capture the rest** |
+
+## eFile → Item List (inside "Expense Claim Demo - A")
+
+- Breadcrumb IMS › My eFile › <eFile>, tinted with the eFile's colour.
+- Header: "Item List", status filter **Uncompleted**, **Sum: 0**. Toolbar: 🔍 search, ◻, ＋ add item, 💡, ⚙, ✱.
+- Columns: checkbox, **Item Date**, **Name**, **Amount (CNY)**, then three small buttons per row: blue counter, green counter, purple (menu). **❓ what the blue and green counters count (comments? attachments?).**
+- The two top rows are the eFile's **Balance/Sum** and **Notional Balance/Sum**, shown under their aliases in a darker blue.
+- Name markers: ☆ favourite; ①②③④ the confirmation steps (4 here, matching the setup); a boxed 1 (attachment count?); ⚙⚙ process; boxed **C** (completed/confirmed?). "A monthly claim - August" has no ①–④, so it may still be a draft. **❓ confirm.**
+- Amounts can be negative (-300.00 claim vs +200.00 / +100.00).
+
+AiWSP: 🟡 items with amount, date, currency and sequential approvals exist. Missing: fixed 5-slot confirmation setup, balance/notional-balance rows, per-row markers.
 
 ## IMS → Client Management (`Client List`)
 
@@ -45,7 +78,10 @@ AiWSP: 🟡 companies have `name`, `chineseName`, address, contact, email, phone
 
 - Filter **State** (All / …). Columns: Name (login), CN Name, EN Name, **Sex**, **Dept/Position** (multiple values allowed), Email, **Mobile**, **Role** (multiple roles allowed, e.g. "A/C Administrator, Standard - Administrator"), row menu, ⚙.
 
-AiWSP: 🟡 users have name, username, email, role (fixed enum), level, permissions, expiry. Missing: CN/EN names, sex, dept/position, mobile, **several custom roles per user**. **❓ Need the add/edit user form and the State filter values.**
+- Row "≡" menu (mostly hand-over tools for when someone leaves): **Edit**, **eFile Participants Transfer**, **eFile Admin Transfer**, **eFile Process User Transfer**, **Service Team Transfer**, **Group Delete**, **eFile Copy**, **Service Team Copy**, **qChat Transfer**, **qChat Delete**, **Assign eFile Link**, **Reset Password**, **Invalid** (deactivate), **Replace**, **Insert**.
+- "Service Team" and "qChat" are modules not seen yet. **❓ where do they appear?**
+
+AiWSP: 🟡 users have name, username, email, role (fixed enum), level, permissions, expiry; `user.replace` covers part of the transfer tools. Missing: CN/EN names, sex, dept/position, mobile, **several custom roles per user**. **❓ Need the add/edit user form and the State filter values.**
 
 ## Account → Role (`Role List`)
 
@@ -61,16 +97,25 @@ AiWSP: 🟡 fixed roles (system/chief/useradmin/member) plus levels 1–4 and pe
 
 AiWSP: 🟡 groups have name and members. Missing: **Share**, delete, and the "Group eFile" view. **❓ Need the Edit form, the User List view and the Group eFile view.**
 
-## Account → System Log
+## Account → System Log (`Log List`)
 
-- Not captured yet. AiWSP: ✅ audit log. **❓ Capture it.**
+- Filters: **User**, **Time** from/to (defaults to the last month), **Content**, then Search.
+- Columns: **Time** (to the second), **User** (`CN name:EN name`), **Module**, **Function**, **Source**, **Content**.
+- Values seen (the UI is in Chinese here):
+  - Module: 用户登录/注销 (user login/logout), eFile
+  - Function: 修改 (modify), 查看 (view), 新增 (add)
+  - Source: Web (so there were probably other clients, e.g. a mobile app)
+  - Content: `用户登录:<user>` (login), `访问eFile:<name>` (opened eFile), `新增eFile:<name>` (created eFile)
+- **Views are logged too**, not only changes.
+
+AiWSP: 🟡 has an audit log, but it records changes only and has no module/function/source columns or filters.
 
 ## Most valuable next captures
 
-1. Inside an eFile: click a row such as "Expense Claim Demo - A" and capture the item list, an item form and the approval flow.
-2. The row "≡" menu on each list (what actions it offers).
-3. Add/edit forms for Client, Company, User and Role, including the role permission matrix.
-4. User Group edit form, its User List and Group eFile views, and the System Log list.
-5. What **Share** means on Role and User Group (open an edit form that has it).
-6. Each top-bar badge opened, and the user dropdown.
-7. The eFile toolbar icons, and the ⚙⚙ / ✱ markers explained.
+1. **The rest of the eFile setup form** (scroll below Notional Balance/Sum Alias).
+2. **An item opened**: its form, its confirmation/approval screen, and what happens at each step.
+3. The ＋ add item form, and the blue/green counters on an item row.
+4. Set Confirmation, Set Process and Set Grand Balance/Sum dialogs, and the eFile Process Monitor.
+5. Add/edit forms for User, Role (permission matrix), User Group, Company and Client, and what **Share** means.
+6. **Service Team** and **qChat**: where they live (maybe the top-bar icons?).
+7. Each top-bar badge opened, and the user dropdown.
