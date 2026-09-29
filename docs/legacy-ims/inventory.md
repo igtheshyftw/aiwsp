@@ -21,8 +21,10 @@ Legend: ✅ already in AiWSP · 🟡 partly there · ❌ missing · ❓ need mor
 ## IMS → My eFile (`My eFile List`)
 
 - Single "Name" column with a checkbox per row for bulk actions. Row background comes from the eFile's **Color** setting (named palette entries such as "Personalised 3"); **Highlight** probably makes the name bold.
-- Markers after a name: ⚙⚙ uses the same icon as the "eFile Process Monitor" menu entry and ✱ the same as "Set Process", so they probably mean "has confirmation steps" and "has a process". **❓ confirm.**
-- Header toolbar, left to right: ＋ add, ▦, 📁 folder, ◌, red 🔨, ⚙, ✱. **❓ what each one does.**
+- **Confirmed by the owner:** the ⚙⚙ and ✱ markers after a name, and the toolbar icons, are **links to other eFiles**.
+  - Name markers: clicking one jumps to a linked eFile. Working assumption: ✱ is a link created by "Set Process" (e.g. Expense Claim → Payment eFile) and ⚙⚙ one watched by "eFile Process Monitor". **❓ which eFile each marker opens.**
+  - Header toolbar (＋, ▦, 📁, ◌, red 🔨, ⚙, ✱): shortcut links to eFiles. These are probably what **Assign eFile Link** on the user menu sets up, per user. **❓ confirm, and whether ＋ is "add eFile" or also a link.**
+- The item list's toolbar (💡, ⚙, ✱) and the ⚙⚙ marker on items are probably the same kind of link.
 - A search box with a 🔒 "locked search" button. The page header has its own search and refresh.
 - Row "≡" menu: **View**, **Edit**, **Delete**, **Set Confirmation**, **Set Process**, **X Process Set** (clear the process?), **Set Grand Balance/Sum**, **eFile Process Monitor**, **Copy And Share**, **Cancel Share**, **Copy eFile**.
 
@@ -57,7 +59,7 @@ Fields seen (the capture was cut off after the last one):
 - Header: "Item List", status filter **Uncompleted**, **Sum: 0**. Toolbar: 🔍 search, ◻, ＋ add item, 💡, ⚙, ✱.
 - Columns: checkbox, **Item Date**, **Name**, **Amount (CNY)**, then three small buttons per row: blue counter, green counter, purple (menu). **❓ what the blue and green counters count (comments? attachments?).**
 - The two top rows are the eFile's **Balance/Sum** and **Notional Balance/Sum**, shown under their aliases in a darker blue.
-- Name markers: ☆ favourite; ①②③④ the confirmation steps (4 here, matching the setup); a boxed 1 (attachment count?); ⚙⚙ process; boxed **C** (completed/confirmed?). "A monthly claim - August" has no ①–④, so it may still be a draft. **❓ confirm.**
+- Name markers: ☆ favourite; ①②③④ the confirmation steps (4 here, matching the setup); a boxed 1 (attachment count?); ⚙⚙ link to another eFile; boxed **C** (completed/confirmed?). "A monthly claim - August" has no ①–④, so it may still be a draft. **❓ confirm.**
 - Amounts can be negative (-300.00 claim vs +200.00 / +100.00).
 
 AiWSP: 🟡 items with amount, date, currency and sequential approvals exist. Missing: fixed 5-slot confirmation setup, balance/notional-balance rows, per-row markers.
