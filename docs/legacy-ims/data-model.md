@@ -1,6 +1,6 @@
 # IMS rebuild: proposed data model
 
-Status: **draft for review.** It is based on the screens in [inventory.md](inventory.md). Items marked **Assumption** are guesses that still need a screenshot or the owner's confirmation. Section 9 lists them all.
+Status: **implemented** (see section 11 for the choices the build made where IMS was unclear). It is based on the screens in [inventory.md](inventory.md). Items marked **Assumption** are guesses that still need a screenshot or the owner's confirmation. Section 9 lists them all.
 
 ## 1. Storage approach
 
@@ -198,3 +198,26 @@ The current AiWSP `audit` rows migrate into this table.
 4. **Links**: auto link and change sign first (they drive the ledgers), then the others.
 5. **Processes**: Set Process, runs, executor To Do, and the monitor.
 6. Then: sharing, eFile links, System Link, notifications, and WeChat.
+
+## 11. Choices made in the build (please correct any that differ from IMS)
+
+| Question | What the rebuild does |
+|---|---|
+| When is a confirmation step signed? | In order. Only the users on the next unsigned step can sign. A confirmer (or eFile admin) can **Return** the item, which clears all signatures. |
+| What is **Auto Commit**? | When an item at that stage has at least one required step and all are signed, it moves to the next stage by itself. Otherwise the stage **Executor** commits it from the item menu. |
+| Does the item move, or is it copied? | Each stage keeps its own copy: committing creates the item in the next stage's eFile (it needs that eFile's own confirmation steps), and the earlier copy becomes Completed. |
+| Balance/Sum vs Notional | Balance/Sum = opening balance + every item in the eFile. Notional = notional opening balance + items not yet Completed. |
+| Completed / Uncompleted | Completed = all required steps are signed and the item is not waiting at a process stage, or it has moved on or finished its process. |
+| Item markers | ☆ star (per user); ①–⑤ steps (filled when signed); boxed number = current process stage; ⚙⚙ = in a process; boxed **C** = all confirmations signed. |
+| Blue / green counters on items | Comments / attachments. |
+| eFile markers | ⚙⚙ = the eFile is a stage in a process; ✱ = the eFile is shared; 🔒 = password. |
+| Red dot in Set Process | The stage's executor cannot open that eFile (add them as a participant). |
+| **MTT-MyeFile** | "Move To Top" in My eFile. |
+| **Expand eFile** | Shows each eFile's tag and last update under its name. |
+| **System Link** | Company-wide list of named web links. |
+| **Share** (eFile) | Shared users can open the eFile. **Share Balance** also shows them the balance rows. |
+| **Share** (Role, User Group) | Stored and shown; it has no effect yet. |
+| User "Role" column | Role names plus "Standard - Normal User / Administrator". The Administrator level can open every eFile of the company (eFile Explorer). |
+| Links on items | Auto Link and Split Link keep the linked item in step with the original (unless locked). Auto Copy copies once. Auto Share shows the same item in another eFile. Bind only records a reference. Conditional Auto Link is created when the item reaches the chosen process stage. |
+| System log | Module and function are shown in the original Chinese labels (用户登录/注销, 查看, 新增, 修改, 删除). |
+| Not built yet | qChat, Service Team, WeChat sync, Item Template Folder. They appear in the menus and say they are unavailable. |
