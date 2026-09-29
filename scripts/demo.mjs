@@ -1,5 +1,5 @@
-// Starts the built server with sample data resembling the original IMS (npm run demo).
-// Data lives in ./demo-data, separate from real data. Delete that folder to start over.
+// Starts the built server with sample data (npm run demo). Data lives in ./demo-data; delete that folder to start over.
+// The demo turns off the administrator authenticator requirement so you can look around; real installations keep it on.
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
 
@@ -7,48 +7,61 @@ const port = Number(process.env.PORT || 3000), base = `http://localhost:${port}`
 const password = 'demo-password';
 const fresh = !existsSync('demo-data');
 const child = spawn(process.execPath, ['dist/server.mjs'], {stdio: ['ignore', 'pipe', 'inherit'], env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: 'demo-data',
- ADMIN_USERNAME: 'Michael', ADMIN_PASSWORD: password, ADMIN_NAME: 'Michael Leong', COMPANY_NAME: 'LSK & Partners Limited', COMPANY_NAME_CN: 'LSK 仲诚投资管理有限公司', COMPANY_CODE: 'L002SH'}});
+ ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: password, ADMIN_NAME: 'WSP System Admin', COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'false'}});
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => child.kill('SIGTERM'));
 child.on('exit', code => process.exit(code ?? 0));
 await new Promise(r => child.stdout.on('data', d => { process.stdout.write(d); if (String(d).includes('listening')) r(); }));
 
-if (fresh) {
+function session() {
  let cookie = '';
- const api = async (action, body = {}) => {
+ return async (action, body = {}) => {
   const r = await fetch(base + '/api/ims', {method: 'POST', headers: {origin: base, 'content-type': 'application/json', cookie}, body: JSON.stringify({action, ...body})});
   const s = r.headers.get('set-cookie'); if (s) cookie = s.split(';')[0];
   const j = await r.json(); if (j.error) throw Error(`${action}: ${j.error}`); return j.result;
  };
- const me = await api('login', {username: 'Michael', password});
- const [co] = await api('company.list');
- await api('company.save', {...co, type: 'Communicative', code: 'L002SH'});
- const ac = (await api('role.list')).find(r => r.name === 'A/C Administrator').id;
- await api('user.save', {id: me.id, username: 'Michael', name_cn: '梁启达', name_en: 'Michael Leong', sex: 'M', dept: 'LSK Management,Management', level: 'Administrator', roleIds: [ac]});
- const add = async (username, name_cn, name_en, sex, dept, extra = {}) => (await api('user.save', {username, name_cn, name_en, sex, dept, password, roleIds: [], ...extra})).id;
- const john = await add('john', '梁申荣', 'John', 'M', 'LSK Management');
- const michelle = await add('Michelle', '袁宝而', 'Michelle', 'F', 'LSK Management');
- const william = await add('William', '梁广鑫', 'William', 'M', 'LSK Management,Management', {level: 'Administrator', roleIds: [ac]});
- const team = (await api('group.save', {name: 'Management Team', members: [me.id, william]})).id;
- const everyone = [me.id, john, michelle, william];
- const efile = async (name, color, extra = {}) => (await api('efile.save', {name, color, participants: everyone, admins: [me.id, william], ...extra})).id;
+}
+if (fresh) {
+ const sys = session(); await sys('login', {username: 'wsp-admin', password});
+ const lsk = (await sys('company.save', {name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', type: 'Communicative', code: 'L002SH', city: 'Shanghai', contact: 'Michael Leong'})).id;
+ const add = async (s, username, name_cn, name_en, sex, dept, extra = {}) => (await s('user.save', {companyId: lsk, username, name_cn, name_en, sex, dept, password, level: 3, ...extra})).id;
+ const michael = await add(sys, 'Michael', '梁启达', 'Michael Leong', 'M', 'LSK Management,Management', {level: 1});
+ await sys('company.chief', {id: lsk, userId: michael});
+ await sys('logout');
+ const mi = session(); await mi('login', {username: 'Michael', password});
+ const william = await add(mi, 'William', '梁广鑫', 'William', 'M', 'LSK Management,Management', {level: 2, position: 'useradmin'});
+ const michelle = await add(mi, 'Michelle', '袁宝而', 'Michelle', 'F', 'LSK Management');
+ const john = await add(mi, 'john', '梁申荣', 'John', 'M', 'LSK Management');
+ await mi('user.save', {companyId: lsk, username: 'intern', name_en: 'Summer Intern', password, level: 4, expires: '2099-12-31', responsible_id: william});
+ const team = (await mi('group.save', {companyId: lsk, name: 'Management Team', members: [michael, william]})).id;
+ const everyone = [michael, william, michelle, john].map(id => ({id, rights: 'edit'}));
+ const efile = async (name, color, extra = {}) => (await mi('efile.save', {name, color, participants: everyone, admins: [michael, william], ...extra})).id;
  await efile('DEMO', 'Blue', {highlight: true});
  await efile('Test', '', {highlight: true});
- const claim = await efile('Expense Claim Demo - A', 'Personalised 3', {groups: [team]});
+ const claim = await efile('Expense Claim Demo - A', 'Personalised 3', {groups: [{id: team, rights: 'edit'}]});
  await efile('Expense Claim Demo - B', 'Teal');
  const payment = await efile('Payment eFile', 'Green');
- await efile('Project summative', 'Blue');
- await efile("Tasks that need intern's assistance", 'Teal');
+ await efile('Project summative', 'Blue', {show_amount: 0});
+ await efile("Tasks that need intern's assistance", 'Teal', {show_amount: 0});
  const stages = [await efile('Finance Manager Approval', ''), await efile('WL Approval', ''), await efile('Cashier Submission', ''), await efile('WL Banking Approval', '')];
- await api('efile.bulk', {op: 'my.remove', ids: stages});
- await api('efile.steps.save', {id: claim, steps: [{title: 'Michelle submission', users: [michelle]}, {title: "Michael's checking", users: [me.id]}, {title: "Manager's approval", users: [william]}, {title: "Cashier (Michael)'s submission of monthly expense claim", users: [me.id]}]});
- await api('efile.balance.save', {id: claim, balance: '0', balance_alias: 'Amount Payable to A', notional: '0', notional_alias: 'Notional Amount Payable to A'});
- await api('process.save', {efileId: claim, name: 'Expense Claim Demo - A', stages: [
-  {efile_id: claim, executor_id: me.id, auto_commit: true}, {efile_id: payment, executor_id: me.id}, {efile_id: stages[0], executor_id: william},
-  {efile_id: stages[1], executor_id: william}, {efile_id: stages[2], executor_id: me.id}, {efile_id: stages[3], executor_id: william, confirm_balance: true}]});
- await api('item.save', {efileId: claim, name: 'A monthly claim - August', amount: '-300', item_date: '2023-09-01', steps: []});
- await api('item.save', {efileId: claim, name: 'Entertainment', amount: '200', item_date: '2023-09-01', steps: [1, 2, 3, 4]});
- await api('item.save', {efileId: claim, name: 'Travel to Diacron office', amount: '100', item_date: '2023-09-01', steps: [1, 2, 3, 4]});
- await api('logout');
+ await mi('efile.bulk', {op: 'my.remove', ids: stages});
+ await mi('efile.steps.save', {id: claim, approval: true, steps: [{title: "Michael's checking", users: [michael]}, {title: "Manager's approval", users: [william]}]});
+ await mi('efile.balance.save', {id: claim, balance: '0', balance_alias: 'Amount Payable to A', notional: '0', notional_alias: 'Notional Amount Payable to A'});
+ await mi('process.save', {efileId: claim, name: 'Expense Claim Demo - A', stages: [
+  {efile_id: claim, executor_id: michael, auto_commit: true}, {efile_id: payment, executor_id: michael}, {efile_id: stages[0], executor_id: william},
+  {efile_id: stages[1], executor_id: william}, {efile_id: stages[2], executor_id: michael}, {efile_id: stages[3], executor_id: william, confirm_balance: true}]});
+ await mi('invite.create', {companyId: lsk, days: 30});
+ await mi('logout');
+ const me = session(); await me('login', {username: 'Michelle', password});
+ await me('item.save', {efileId: claim, name: 'A monthly claim - August', amount: '-300', item_date: '2023-09-01'});
+ await me('item.save', {efileId: claim, name: 'Entertainment', amount: '200', item_date: '2023-09-01', submit: true});
+ await me('item.save', {efileId: claim, name: 'Travel to Diacron office', amount: '100', item_date: '2023-09-01', submit: true});
+ await me('logout');
  console.log('Sample data created.');
 }
-console.log(`\nOpen ${base} and sign in as Michael, john, Michelle or William with the password "${password}". Press Ctrl+C to stop.`);
+console.log(`\nOpen ${base} and sign in with the password "${password}" as:
+  Michael    Chief Admin of LSK (approves step 1)
+  William    User Admin (approves step 2)
+  Michelle   staff, Level 3 (submits claims)
+  john       staff, Level 3
+  wsp-admin  WSP System Admin (sees companies, not LSK's eFiles)
+Press Ctrl+C to stop.`);

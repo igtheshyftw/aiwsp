@@ -160,7 +160,7 @@ function itemRow(c: Ctx, i: Row, e: Row) {
   can_lock: e.role === 'admin' && ['draft', 'none', 'returned', 'withdrawn'].includes(i.status),
   can_delete: i.round === 0 && !i.shared_in && (e.role === 'admin' || i.created_by === c.user.id) && !(r && r.stage > 1),
   can_archive: !i.archived && i.round > 0 && ['approved', 'rejected', 'withdrawn'].includes(i.status) && (e.role === 'admin' || i.created_by === c.user.id),
-  can_reassign: !!st && e.role === 'admin',
+  can_reassign: !!st && st.paused && e.role === 'admin',
  };
 }
 // Default order: Move to Top first, then dated items newest first, then undated items by name; the system ID breaks ties.

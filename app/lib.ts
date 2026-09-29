@@ -7,6 +7,7 @@ export async function api<T = any>(action: string, params: Record<string, any> =
  const j = await r.json().catch(() => ({error: 'Unable to complete the request.'}));
  if (!r.ok || j.error) {
   if (j.error === 'Please sign in again.') window.dispatchEvent(new Event('ims:signed-out'));
+  if (j.error === 'MFA_REQUIRED') window.dispatchEvent(new Event('ims:mfa'));
   throw new ApiError(j.error ?? 'Unable to complete the request.');
  }
  return j.result as T;

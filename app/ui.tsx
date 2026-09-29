@@ -2,7 +2,9 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {api, go, href, useRoute, fmtTime} from './lib';
 
-export type Me = {id: string, username: string, name: string, name_en: string, company: {id: string, name_cn: string, name_en: string}, sys: boolean, perms: string[]};
+export type Me = {id: string, username: string, name: string, name_en: string, position: string, level: number, company: {id: string, name_cn: string, name_en: string, operator: boolean},
+ sys: boolean, perms: string[], functions: string[], mfa: boolean, mfa_required: boolean};
+export const POSITION: Record<string, string> = {system: 'System Admin', chief: 'Chief Admin', useradmin: 'User Admin', member: 'User'};
 
 // ---------- Toasts and dialogs (module-level so any page can call them)
 type Dialog = {kind: 'confirm', message: string, resolve: (v: any) => void} | {kind: 'form', title: string, fields: Field[], resolve: (v: any) => void}
@@ -14,7 +16,7 @@ export const toastError = (e: any) => pushToast(e?.message ?? String(e), true);
 export const confirmBox = (message: string) => new Promise<boolean>(resolve => pushDialog({kind: 'confirm', message, resolve}));
 export type Field = {name: string, label: string, type?: 'text' | 'password' | 'select' | 'textarea' | 'date', options?: [string, string][], value?: string, required?: boolean};
 export const formBox = (title: string, fields: Field[]) => new Promise<Record<string, string> | null>(resolve => pushDialog({kind: 'form', title, fields, resolve}));
-export type PickOptions = {title: string, users?: boolean, groups?: boolean, single?: boolean, selectedUsers?: string[], selectedGroups?: string[]};
+export type PickOptions = {title: string, users?: boolean, groups?: boolean, single?: boolean, selectedUsers?: string[], selectedGroups?: string[], companyId?: string, ownOnly?: boolean};
 export type Picked = {users: {id: string, label: string}[], groups: {id: string, label: string}[]};
 export const pickBox = (opts: PickOptions) => new Promise<Picked | null>(resolve => pushDialog({kind: 'pick', opts, resolve}));
 export type ChooseOptions = {title: string, options: {id: string, label: string}[], selected?: string[], single?: boolean};
@@ -57,7 +59,7 @@ function PickDialog({opts, close}: {opts: PickOptions, close: (v: Picked | null)
  const [users, setUsers] = useState<string[]>(opts.selectedUsers ?? []);
  const [groups, setGroups] = useState<string[]>(opts.selectedGroups ?? []);
  const [q, setQ] = useState('');
- useEffect(() => { api('directory').then(setDir).catch(toastError); }, []);
+ useEffect(() => { api('directory', {companyId: opts.companyId}).then(d => setDir(opts.ownOnly ? {...d, users: d.users.filter((u: any) => !u.external)} : d)).catch(toastError); }, [opts.companyId, opts.ownOnly]);
  const toggle = (list: string[], set: (v: string[]) => void, id: string) => set(opts.single ? [id] : list.includes(id) ? list.filter(x => x !== id) : [...list, id]);
  const match = (s: string) => s.toLowerCase().includes(q.toLowerCase());
  const done = () => close({users: (dir?.users ?? []).filter(u => users.includes(u.id)).map(u => ({id: u.id, label: u.username})), groups: (dir?.groups ?? []).filter(g => groups.includes(g.id)).map(g => ({id: g.id, label: g.name}))});
@@ -65,7 +67,7 @@ function PickDialog({opts, close}: {opts: PickOptions, close: (v: Picked | null)
   <div className="field"><input type="text" placeholder="Search" value={q} onChange={e => setQ(e.target.value)}/></div>
   {!dir ? <p className="muted">Loading…</p> : <div className={opts.users !== false && opts.groups ? 'picker-cols' : ''}>
    {opts.users !== false && <div><h4>Users</h4>{dir.users.filter(u => match(u.username + u.label)).map(u =>
-    <label className="row" key={u.id}><input type={opts.single ? 'radio' : 'checkbox'} checked={users.includes(u.id)} onChange={() => toggle(users, setUsers, u.id)}/>{u.username} <span className="muted">{u.label !== u.username ? u.label : ''}</span></label>)}</div>}
+    <label className="row" key={u.id}><input type={opts.single ? 'radio' : 'checkbox'} checked={users.includes(u.id)} onChange={() => toggle(users, setUsers, u.id)}/>{u.username} <span className="muted">{u.label !== u.username ? u.label : ''}</span>{u.external && <span className="ext">{u.company}</span>}</label>)}</div>}
    {opts.groups && <div><h4>Groups</h4>{dir.groups.length ? dir.groups.filter(g => match(g.name)).map(g =>
     <label className="row" key={g.id}><input type="checkbox" checked={groups.includes(g.id)} onChange={() => toggle(groups, setGroups, g.id)}/>{g.name}</label>) : <p className="muted">No user groups.</p>}</div>}
   </div>}
@@ -140,7 +142,7 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
  const [counters, setCounters] = useState({messages: 0, confirm: 0});
  useEffect(() => { const load = () => api('counters').then(setCounters).catch(() => {}); load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, [route.path]);
  const perms = new Set(me.perms);
- const accountItems: [string, string, string][] = ([['company', 'Company', '/account/company'], ['user', 'User', '/account/user'], ['role', 'Role', '/account/role'], ['group', 'User Group', '/account/group'], ['log', 'System Log', '/account/log']] as [string, string, string][]).filter(([p]) => perms.has(p));
+ const accountItems: [string, string, string][] = ([['company', 'Company', '/account/company'], ['user', 'User', '/account/user'], ['role', 'Role', '/account/role'], ['group', 'User Group', '/account/group'], ['connection', 'Connection', '/account/connection'], ['log', 'System Log', '/account/log']] as [string, string, string][]).filter(([p]) => perms.has(p));
  const active = (p: string) => route.path === p || route.path.startsWith(p + '/');
  return <>
   <header className="topbar">
@@ -150,9 +152,10 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
    <Menu items={[
     {icon: 'fa-user', label: 'My Profile', onClick: () => go('/profile')},
     {icon: 'fa-key', label: 'Change Password', onClick: () => go('/profile?password=1')},
+    {icon: 'fa-mobile', label: me.mfa ? 'Authenticator: on' : 'Set Up Authenticator', onClick: () => go('/mfa')},
     '-',
     {icon: 'fa-sign-out', label: 'Log Out', onClick: onLogout},
-   ]} button={toggle => <button className="user-btn" onClick={toggle}><span className="avatar"><i className="fa fa-user"/></span><span className="user-name">{me.name_en}</span><i className="fa fa-angle-down"/></button>}/>
+   ]} button={toggle => <button className="user-btn" onClick={toggle}><span className="avatar"><i className="fa fa-user"/></span><span className="user-name">{me.name_en}</span><span className="user-pos">{POSITION[me.position]}</span><i className="fa fa-angle-down"/></button>}/>
   </header>
   <nav className="sidebar" aria-label="Main">
    <button className="toggle" onClick={() => setCollapsed(c => !c)} aria-label="Toggle menu"><i className="fa fa-bars"/></button>

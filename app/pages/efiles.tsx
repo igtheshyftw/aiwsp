@@ -3,7 +3,7 @@ import {useEffect, useState} from 'react';
 import {api, useLoad, go, href, colorClass, fmtTime} from '../lib';
 import {Breadcrumb, Panel, DataTable, Loading, Tool, ToolMenu, toast, toastError, confirmBox, formBox, pickBox, chooseBox, type MenuItem} from '../ui';
 
-const TITLES: Record<string, string> = {my: 'My eFile List', explorer: 'eFile Explorer', recent: 'Recently Updated', links: 'eFile Link', hidden: 'Hide List', archive: 'Archive List',
+const TITLES: Record<string, string> = {my: 'My eFile List', explorer: 'eFile Explorer', mine: 'Created by me', recent: 'Recently Updated', links: 'eFile Link', hidden: 'Hide List', archive: 'Archive List',
  process: 'My Process', confirmation: 'My Confirmation', color: 'Filter By Color'};
 const LOCK_KEY = 'ims.efile.lockedSearch';
 const readLock = () => { try { return localStorage.getItem(LOCK_KEY) ?? ''; } catch { return ''; } };
@@ -68,6 +68,7 @@ export function EfileList({view, color}: {view: string, color?: string}) {
   {icon: 'fa-external-link', label: 'eFile Link', onClick: () => go('/ims/efile?view=links')},
   {icon: 'fa-eye-slash', label: 'Hide List', onClick: () => go('/ims/efile?view=hidden')},
   {icon: 'fa-cogs', label: 'eFile Explorer', onClick: () => go('/ims/efile?view=explorer')},
+  {icon: 'fa-user', label: 'Created by me', onClick: () => go('/ims/efile?view=mine')},
   {icon: 'fa-folder-open', label: 'Archive List', onClick: () => go('/ims/efile?view=archive')},
   ...(view !== 'my' ? ['-', {icon: 'fa-list', label: 'My eFile', onClick: () => go('/ims/efile')}] as MenuItem[] : []),
  ];
@@ -106,6 +107,7 @@ export function EfileList({view, color}: {view: string, color?: string}) {
      <span className="markers">
       {!!r.locked && <i className="fa fa-lock" title="Password protected"/>}
       {!!r.in_process && <i className="fa fa-cogs" title="Part of a process"/>}
+      {!!r.approval && <i className="fa fa-check-square-o" title="Approval required"/>}
       {!!r.shared && <i className="fa fa-asterisk" title="Shared"/>}
       {!!r.mtt && <i className="fa fa-hand-o-up" title="Moved to top"/>}
      </span>

@@ -11,7 +11,8 @@
     "dev": "npm run build && npm start",
     "typecheck": "tsc --noEmit",
     "test": "node tests/standalone.mjs",
-    "demo": "node scripts/demo.mjs"
+    "demo": "node scripts/demo.mjs",
+    "backup": "node scripts/backup.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

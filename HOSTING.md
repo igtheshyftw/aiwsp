@@ -34,7 +34,9 @@ On a hosting service that supports Docker **and persistent disks**:
 | `ADMIN_PASSWORD` | Your own strong password, at least 8 characters |
 | `ADMIN_NAME` | Your administrator display name |
 | `ADMIN_EMAIL` | Optional contact email |
-| `COMPANY_NAME` / `COMPANY_NAME_CN` / `COMPANY_CODE` | Your company, created on the first start |
+| `COMPANY_NAME` / `COMPANY_NAME_CN` / `COMPANY_CODE` | The operator company (e.g. WSP), created on the first start |
+| `REQUIRE_ADMIN_MFA` | `true` (administrators must use an authenticator app) |
+| `CLAMAV_HOST` | Host name of a clamd server for attachment scanning |
 
 5. Deploy one instance. Open the host's URL and sign in.
 
@@ -42,11 +44,16 @@ Never put secrets into GitHub files or frontend environment variables. Enter the
 
 ## First business setup
 
-1. **Account → Company:** check your company's name, type, code and city.
-2. **Account → Role:** adjust the two standard roles, or add your own.
-3. **Account → User:** add each person, with their Chinese and English names, department and roles.
-4. **Account → User Group:** group people who share eFiles, e.g. "Management Team".
-5. **IMS → My eFile → ＋:** create eFiles, then use the row menu for Set Confirmation, Set Grand Balance/Sum and Set Process.
+1. Sign in as the first System Admin and set up an authenticator app when asked (Google Authenticator, Microsoft Authenticator, or similar).
+2. **Account → User** (in WSP): add your other System Admins by name. Do not share one login.
+3. **Account → Company → ＋**: add each client company with its English and Chinese names, address, contact person, email and phone.
+4. On that company's row menu, choose **User List**, add the person who will run it, then **Assign Chief Admin**.
+5. The Chief Admin signs in, sets up an authenticator, and then:
+   - checks the four levels (**Account → Role**)
+   - appoints User Admins
+   - decides in **Company → Edit** whether WSP System Admins may manage the company's users or connections
+   - prints the **Registration QR Code** for staff
+   - creates eFiles with their approval steps (**Set Confirmation**)
 
 ## Hosting in mainland China
 
@@ -55,6 +62,17 @@ Never put secrets into GitHub files or frontend environment variables. Enter the
 - **HTTPS certificates:** Caddy's automatic Let's Encrypt certificates normally work from the mainland once DNS points at the server and ports 80/443 are open. Alternatively, use the free certificate from your cloud provider.
 - **The application itself** has no outside dependencies at run time (no Google fonts, CDNs or foreign APIs), so pages load normally in China.
 - **Personal data:** staff names, phones and emails are personal information under China's PIPL. Keep the server and its backups in a region you are comfortable with, and restrict who holds the admin account.
+
+## Malware scanning, backups and Alibaba Cloud
+
+- **ClamAV.** `compose.production.yaml` runs a `clamav` container, and the app scans every attachment with it. While ClamAV is starting (it downloads its virus database on first start) or unavailable, uploads are refused with a message rather than stored unscanned. It needs about 2–3 GB of memory. In mainland China, set `CLAMAV_IMAGE` to a mirror, as shown in `.env.example`.
+- **Backups.** `docker compose -f compose.production.yaml exec aiwsp node scripts/backup.mjs` writes a consistent copy of the database and attachments to `/data/backups/ims-<date>/` while the site keeps running. Copy these off the server every day. On Alibaba Cloud, install `ossutil` on the host and add a cron job such as:
+  ```
+  15 3 * * * docker compose -f /srv/ims/compose.production.yaml exec -T aiwsp node scripts/backup.mjs && ossutil cp -r /var/lib/docker/volumes/ims_aiwsp_data/_data/backups oss://YOUR-BUCKET/ims-backups/ --update
+  ```
+  Use a private OSS bucket in the same region. Delete old local backups periodically, and test a restore occasionally.
+- **Restore.** Stop the app, put the backup's `ims.sqlite` in the data directory as `aiwsp.sqlite` and its `uploads/` folder beside it, then start the app.
+- **Administrator authenticators.** If an administrator loses their phone, another administrator above them uses **Reset Authenticator** on the user's row menu. Keep at least two System Admins so one can always help the other.
 
 ## Update from GitHub
 
@@ -71,6 +89,6 @@ Back up the whole `/data` directory, including the SQLite database and uploads. 
 - Login does not persist: check HTTPS and browser cookie settings.
 - Data disappears after redeploy: the data directory was not attached to persistent storage.
 - Existing administrator password does not change with `.env`: expected; use **your name (top right) → Change Password**.
-- Forgotten password: a user with the User permission can use **Reset Password** in the user's row menu. Only the first (system) administrator can reset the system administrator's password, so keep it safe.
+- Forgotten password: an administrator uses **Reset Password** in the user's row menu and sends the one-time link (valid one hour). System Admins reset each other, so keep at least two.
 - Repeated login attempts are rate-limited. A proxy may make several people share the same apparent address; do not forward untrusted client IP headers into the app.
 

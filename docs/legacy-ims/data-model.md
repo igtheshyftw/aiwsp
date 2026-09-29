@@ -1,6 +1,6 @@
 # IMS rebuild: proposed data model
 
-Status: **implemented** (see section 11 for the choices the build made where IMS was unclear). It is based on the screens in [inventory.md](inventory.md). Items marked **Assumption** are guesses that still need a screenshot or the owner's confirmation. Section 9 lists them all.
+Status: **implemented, then extended by the AiWSP requirements.** Where they differ, [../aiwsp/traceability.md](../aiwsp/traceability.md) wins. In particular, roles became four authorization levels; IMS "Confirmation" became the AiWSP approval workflow (submit, approve/return/reject, versions); System Admins no longer see client eFiles; and a blank amount is NULL, not 0. The schema is in `server/db.ts`. It is based on the screens in [inventory.md](inventory.md). Items marked **Assumption** are guesses that still need a screenshot or the owner's confirmation. Section 9 lists them all.
 
 ## 1. Storage approach
 

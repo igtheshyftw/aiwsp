@@ -11,11 +11,12 @@ RUN npm run typecheck && npm run build && npm test
 
 FROM ${NODE_IMAGE}
 ARG NPM_REGISTRY=https://registry.npmjs.org
-ENV NODE_ENV=production PORT=3000 DATA_DIR=/data
+ENV NODE_ENV=production PORT=3000 DATA_DIR=/data BACKUP_DIR=/data/backups
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund --registry=${NPM_REGISTRY} && mkdir /data && chown node:node /data
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/scripts/backup.mjs ./scripts/backup.mjs
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

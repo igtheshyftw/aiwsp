@@ -146,6 +146,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
  // Invalid = departed: sessions end at once, history stays, unfinished approvals must be reassigned.
  'user.state'(c, b) {
   const u = manageableUser(c, b.id); const state = u.state === 'normal' ? 'invalid' : 'normal';
+  if (u.position === 'system' && state === 'invalid') check(all(`SELECT id FROM user WHERE position='system' AND state='normal' AND id<>?`, u.id).length, 'Keep at least one active System Admin.');
   tx(() => {
    run('UPDATE user SET state=?,revision=revision+1 WHERE id=?', state, u.id); run('DELETE FROM sessions WHERE user_id=?', u.id);
    log(c, 'account', 'modify', `${state === 'invalid' ? '停用' : '启用'}用户:${u.username}`, u.company_id);

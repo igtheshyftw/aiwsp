@@ -255,6 +255,11 @@ try {
  for (const f of ['新增用户', '二维码注册', '审批', '管理员覆盖', '下载附件', '用户移交']) assert(logs.some(l => l.content.includes(f) || l.function === f), `log has ${f}`);
  await jo('log.list', {companyId: lsk}, {ok: false});
 
+ // Backups run while the server is up and include the database and attachments.
+ const {execFileSync} = await import('node:child_process');
+ const backupOut = execFileSync(process.execPath, ['scripts/backup.mjs'], {env: {...process.env, DATA_DIR: directory, BACKUP_DIR: join(directory, 'backups')}}).toString();
+ assert.match(backupOut, /Backup written to .*database \+ [1-9]/);
+
  // Restart keeps data; logout ends the session.
  await stop(); await start();
  assert.equal((await mi('efile.list', {view: 'explorer'})).length, 2);

@@ -6,23 +6,37 @@ import {Breadcrumb, Panel, DataTable, Loading, FormPanel, FieldRow, PickedField,
 type Ref = {id: string, label: string};
 const crumbs = (last: string, id?: string, name?: string) => [{label: 'IMS'}, {label: 'My eFile', to: '/ims/efile'}, ...(id && name ? [{label: name, to: `/ims/efile/${id}`}] : []), {label: last}];
 
+type Member = Ref & {rights?: string, external?: boolean};
+// A picked list where each person or group carries a View / Edit right.
+function RightsList({list, onChange}: {list: Member[], onChange: (l: Member[]) => void}) {
+ if (!list.length) return null;
+ return <div className="member-list">{list.map((m, i) => <span key={m.id}>{m.label}{m.external && <span className="ext">external</span>}
+  <select className="rights" value={m.rights ?? 'edit'} aria-label={`Right for ${m.label}`} onChange={e => onChange(list.map((x, j) => j === i ? {...x, rights: e.target.value} : x))}>
+   <option value="edit">Edit</option><option value="view">View</option></select></span>)}</div>;
+}
+
 export function EfileForm({id}: {id?: string}) {
- const [f, setF] = useState<any>({name: '', tag: '', highlight: false, color: '', report_name: '', currency: 'CNY', participants: [] as Ref[], groups: [] as Ref[], admins: [] as Ref[], wechat_participants: [] as Ref[], wechat_groups: [] as Ref[]});
- const [colors, setColors] = useState<string[]>([]);
+ const [f, setF] = useState<any>(null);
+ const [meta, setMeta] = useState<{colors: string[], currencies: string[]}>({colors: [], currencies: []});
  useEffect(() => {
-  api('efile.form').then(r => setColors(r.colors)).catch(toastError);
+  api('efile.form').then(setMeta).catch(toastError);
   if (id) api('efile.get', {id}).then(setF).catch(toastError);
-  else api('profile.get').then(me => { const self = [{id: me.id, label: me.username}]; setF((x: any) => ({...x, participants: self, admins: self})); }).catch(toastError);
+  else api('profile.get').then(me => setF({name: '', tag: '', highlight: false, color: '', report_name: '', currency: 'CNY', show_date: 1, show_amount: 1, approval: 0,
+   participants: [{id: me.id, label: me.username, rights: 'edit'}], groups: [], admins: me.effective.includes('efileAdmin') ? [{id: me.id, label: me.username}] : [], wechat_participants: [], wechat_groups: []})).catch(toastError);
  }, [id]);
- const pickUsers = (key: string, title: string) => async () => { const p = await pickBox({title, selectedUsers: f[key].map((x: Ref) => x.id)}); if (p) setF({...f, [key]: p.users}); };
- const pickGroups = (key: string, title: string) => async () => { const p = await pickBox({title, users: false, groups: true, selectedGroups: f[key].map((x: Ref) => x.id)}); if (p) setF({...f, [key]: p.groups}); };
+ if (!f) return <Loading/>;
+ const keepRights = (old: Member[], picked: Ref[]) => picked.map(p => ({...p, rights: old.find(o => o.id === p.id)?.rights ?? 'edit'}));
+ const pickUsers = (key: string, title: string) => async () => { const p = await pickBox({title, selectedUsers: f[key].map((x: Ref) => x.id)}); if (p) setF({...f, [key]: keepRights(f[key], p.users)}); };
+ const pickGroups = (key: string, title: string) => async () => { const p = await pickBox({title, users: false, groups: true, selectedGroups: f[key].map((x: Ref) => x.id)}); if (p) setF({...f, [key]: keepRights(f[key], p.groups)}); };
  const clear = (key: string) => () => setF({...f, [key]: []});
  const ids = (k: string) => f[k].map((x: Ref) => x.id);
+ const withRights = (k: string) => f[k].map((x: Member) => ({id: x.id, rights: x.rights ?? 'edit'}));
  const save = async () => {
   try {
-   const r = await api('efile.save', {id, name: f.name, tag: f.tag, highlight: f.highlight, color: f.color, report_name: f.report_name, currency: f.currency,
-    participants: ids('participants'), groups: ids('groups'), admins: ids('admins'), wechat_participants: ids('wechat_participants'), wechat_groups: ids('wechat_groups')});
-   toast('Saved.'); go(`/ims/efile/${r.id}`);
+   const r = await api('efile.save', {id, version: f.version, name: f.name, tag: f.tag, highlight: f.highlight, color: f.color, report_name: f.report_name, currency: f.currency,
+    show_date: f.show_date, show_amount: f.show_amount, approval: f.approval,
+    participants: withRights('participants'), groups: withRights('groups'), admins: ids('admins'), wechat_participants: ids('wechat_participants'), wechat_groups: ids('wechat_groups')});
+   toast('Saved.'); go(f.approval && !(f.steps?.length) ? `/ims/efile/${r.id}/confirmation` : `/ims/efile/${r.id}`);
   } catch (e) { toastError(e); }
  };
  return <>
@@ -32,61 +46,82 @@ export function EfileForm({id}: {id?: string}) {
    <FieldRow label="Tag"><textarea value={f.tag} onChange={e => setF({...f, tag: e.target.value})}/></FieldRow>
    <FieldRow label="Item Template Folder"><button className="btn-sq" style={{width: 44}} title="Choose folder" onClick={() => toast('Item templates are not set up yet.')}><i className="fa fa-check-square-o"/></button></FieldRow>
    <div className="field"><label>Select Type</label><label style={{display: 'flex', gap: 8, alignItems: 'center'}}><input type="radio" checked readOnly/> User And Group</label></div>
-   <PickedField label="Participants" req value={semi(f.participants)} onPick={pickUsers('participants', 'Participants')} onClear={clear('participants')}/>
+   <PickedField label="Participants" req value={semi(f.participants)} onPick={pickUsers('participants', 'Participants (your staff and approved connection contacts)')} onClear={clear('participants')}/>
+   <div className="field" style={{marginTop: -8}}><RightsList list={f.participants} onChange={l => setF({...f, participants: l})}/></div>
    <PickedField label="Group" value={semi(f.groups)} onPick={pickGroups('groups', 'Group')} onClear={clear('groups')}/>
+   <div className="field" style={{marginTop: -8}}><RightsList list={f.groups} onChange={l => setF({...f, groups: l})}/></div>
    <div className="divider"/>
-   <PickedField label="Administrators" req value={semi(f.admins)} onPick={pickUsers('admins', 'Administrators')} onClear={clear('admins')}/>
+   <PickedField label="Administrators (eFile Admin)" req value={semi(f.admins)} onPick={pickUsers('admins', 'eFile Admins')} onClear={clear('admins')}/>
+   {f.admin_fallback && <div className="field notice-bar">This eFile has no active eFile Admin; the Chief Admin (or a System Admin) is administering it. Choose a new eFile Admin.</div>}
+   <div className="divider"/>
+   <div className="field checks"><label>Columns and approval</label>
+    <label><input type="checkbox" checked={!!f.show_date} onChange={e => setF({...f, show_date: e.target.checked ? 1 : 0})}/>Show date column</label>
+    <label><input type="checkbox" checked={!!f.show_amount} onChange={e => setF({...f, show_amount: e.target.checked ? 1 : 0})}/>Show amount column</label>
+    <label><input type="checkbox" checked={!!f.approval} onChange={e => setF({...f, approval: e.target.checked ? 1 : 0})}/>Approval required (steps are set with Set Confirmation)</label>
+    <div className="hint">Hiding a column keeps the stored values.</div>
+   </div>
+   {!!f.show_amount && <FieldRow label="Currency (standard code)"><select value={f.currency} onChange={e => setF({...f, currency: e.target.value})}>{meta.currencies.map(c => <option key={c}>{c}</option>)}</select>
+    {id && <div className="hint">Changing the currency applies to new items only; existing amounts keep their own currency.</div>}</FieldRow>}
    <div className="divider"/>
    <PickedField label="Sync With Wechat: Participants" value={semi(f.wechat_participants)} onPick={pickUsers('wechat_participants', 'Sync With Wechat: Participants')} onClear={clear('wechat_participants')}/>
    <PickedField label="Sync With Wechat: Group" value={semi(f.wechat_groups)} onPick={pickGroups('wechat_groups', 'Sync With Wechat: Group')} onClear={clear('wechat_groups')}/>
    <div className="divider"/>
    <div className="field checks"><label><input type="checkbox" checked={!!f.highlight} onChange={e => setF({...f, highlight: e.target.checked})}/>Highlight</label></div>
-   <FieldRow label="Color"><select value={f.color} onChange={e => setF({...f, color: e.target.value})}>{colors.map(c => <option key={c} value={c}>{c || '—'}</option>)}</select></FieldRow>
+   <FieldRow label="Color"><select value={f.color} onChange={e => setF({...f, color: e.target.value})}>{meta.colors.map(c => <option key={c} value={c}>{c || '—'}</option>)}</select></FieldRow>
    <FieldRow label="Report Name"><input type="text" value={f.report_name} onChange={e => setF({...f, report_name: e.target.value})}/></FieldRow>
    <FieldRow label="Item Type"><select disabled value="number"><option value="number">Number</option></select></FieldRow>
-   <FieldRow label="Currency"><input type="text" value={f.currency} maxLength={8} onChange={e => setF({...f, currency: e.target.value})}/></FieldRow>
   </FormPanel>
  </>;
 }
 
+const rightsText = (l: Member[]) => l.map(m => `${m.label}${m.rights === 'view' ? ' (View)' : ''};`).join('');
 export function EfileView({id}: {id: string}) {
  const {data: e, error} = useLoad(() => api('efile.get', {id}), [id]);
  if (!e) return <Loading error={error}/>;
- const ord = ['1st', '2nd', '3rd', '4th', '5th'];
  const rows: [string, string][] = [
-  ['Name', e.name], ['Tag', e.tag], ['Select Type', 'User And Group'], ['Participants', semi(e.participants)], ['Group', semi(e.groups)],
+  ['Name', e.name], ['Tag', e.tag], ['Select Type', 'User And Group'], ['Participants', rightsText(e.participants)], ['Group', rightsText(e.groups)],
   ['Administrators', semi(e.admins)], ['Highlight', e.highlight ? 'Yes' : 'No'], ['Color', e.color],
-  ...ord.map((o, i) => [`${o} Confirmation`, e.steps.find((s: any) => s.position === i + 1)?.users.map((u: any) => u.label + ';').join('') ?? ''] as [string, string]),
-  ['Report Name', e.report_name], ['Item Type', 'Number'], ['Balance/Sum', e.balance_open], ['Balance/Sum Alias', e.balance_alias], ['Notional Balance/Sum', e.notional_open], ['Notional Balance/Sum Alias', e.notional_alias],
+  ['Approval', e.approval ? 'Required' : 'No approval required'],
+  ...e.steps.map((s: any) => [`Step ${s.position}: ${s.title}`, s.users.map((u: any) => u.label + ';').join('')] as [string, string]),
+  ['Report Name', e.report_name], ['Item Type', 'Number'], ['Columns', [e.show_date && 'Date', e.show_amount && 'Amount'].filter(Boolean).join(', ') || 'Name only'],
+  ['Balance/Sum', e.balance_open], ['Balance/Sum Alias', e.balance_alias], ['Notional Balance/Sum', e.notional_open], ['Notional Balance/Sum Alias', e.notional_alias],
   ['Currency', e.currency], ['Sync With Wechat: Participants', semi(e.wechat_participants)], ['Sync With Wechat: Group', semi(e.wechat_groups)], ['Password', e.locked ? 'Yes' : 'No'],
  ];
  return <>
   <Breadcrumb items={crumbs('View', e.id, e.name)}/>
   <FormPanel title="eFile Setup Adminstration">
    {rows.map(([k, v]) => <div className="field" key={k} style={{marginBottom: 10}}><div className="label" style={{marginBottom: 6}}>{k}</div><div className="view-value">{v}</div></div>)}
-   <div className="field"><a className="btn blue" href={href(`/ims/efile/${e.id}/edit`)}><i className="fa fa-edit"/> Edit</a> <a className="btn plain" href={href(`/ims/efile/${e.id}`)}>Item List</a></div>
+   <div className="field">{e.role === 'admin' && <a className="btn blue" href={href(`/ims/efile/${e.id}/edit`)}><i className="fa fa-edit"/> Edit</a>} <a className="btn plain" href={href(`/ims/efile/${e.id}`)}>Item List</a></div>
   </FormPanel>
  </>;
 }
 
+// Set Confirmation = the approval steps: ordered names and eligible approvers. Changes apply to future submissions only.
 export function SetConfirmation({id}: {id: string}) {
  const [e, setE] = useState<any>(null);
+ const [approval, setApproval] = useState(false);
  const [steps, setSteps] = useState<{title: string, users: Ref[]}[]>([]);
- useEffect(() => { api('efile.get', {id}).then(r => { setE(r); setSteps(Array.from({length: 5}, (_, i) => { const s = r.steps.find((x: any) => x.position === i + 1); return {title: s?.title ?? '', users: s?.users ?? []}; })); }).catch(toastError); }, [id]);
+ useEffect(() => { api('efile.get', {id}).then(r => { setE(r); setApproval(!!r.approval || !r.steps.length); setSteps(r.steps.length ? r.steps.map((s: any) => ({title: s.title, users: s.users})) : [{title: '', users: []}]); }).catch(toastError); }, [id]);
  if (!e) return <Loading/>;
- const ord = ['1st', '2nd', '3rd', '4th', '5th'];
  const set = (i: number, v: any) => setSteps(steps.map((s, j) => j === i ? {...s, ...v} : s));
- const save = async () => { try { await api('efile.steps.save', {id, steps: steps.map(s => ({title: s.title, users: s.users.map(u => u.id)}))}); toast('Saved.'); go(`/ims/efile/${id}`); } catch (err) { toastError(err); } };
+ const move = (i: number, d: number) => { const n = [...steps]; [n[i], n[i + d]] = [n[i + d], n[i]]; setSteps(n); };
+ const save = async () => { try { await api('efile.steps.save', {id, approval, steps: steps.map(s => ({title: s.title, users: s.users.map(u => u.id)}))}); toast('Saved.'); go(`/ims/efile/${id}`); } catch (err) { toastError(err); } };
  return <>
   <Breadcrumb items={crumbs('Set Confirmation', e.id, e.name)}/>
   <FormPanel title="Set Confirmation" onSave={save} actions={<><button className="btn-sq grey" onClick={() => history.back()} title="Back"><i className="fa fa-undo"/></button><button className="btn-sq" onClick={save} title="Save"><i className="fa fa-check"/></button></>}>
    <div className="field"><div className="label">Name</div><div className="view-value">{e.name}</div></div>
+   <div className="field checks"><label><input type="checkbox" checked={approval} onChange={ev => setApproval(ev.target.checked)}/>Approval required for items in this eFile</label>
+    <div className="hint">Approvers act step by step. Nobody can approve an item they created, submitted or edited. Changes here apply to future submissions; items already submitted keep their steps.</div></div>
    {steps.map((s, i) => <div key={i}>
     <div className="divider"/>
-    <FieldRow label={`${ord[i]} Confirmation: Title`}><input type="text" value={s.title} placeholder={`e.g. ${['Submission', 'Checking', "Manager's approval", 'Cashier', 'Final approval'][i]}`} onChange={ev => set(i, {title: ev.target.value})}/></FieldRow>
-    <PickedField label={`${ord[i]} Confirmation`} value={semi(s.users)} onPick={async () => { const p = await pickBox({title: `${ord[i]} Confirmation`, selectedUsers: s.users.map(u => u.id)}); if (p) set(i, {users: p.users}); }} onClear={() => set(i, {users: []})}/>
+    <FieldRow label={<>Step {i + 1}: name <span style={{float: 'right'}}>
+     {i > 0 && <button className="clear" style={{padding: 0, color: '#333', fontSize: 14}} title="Move up" onClick={() => move(i, -1)}><i className="fa fa-arrow-up"/></button>}{' '}
+     {i < steps.length - 1 && <button className="clear" style={{padding: 0, color: '#333', fontSize: 14}} title="Move down" onClick={() => move(i, 1)}><i className="fa fa-arrow-down"/></button>}{' '}
+     <button className="clear" style={{padding: 0, fontSize: 14}} title="Remove step" onClick={() => setSteps(steps.filter((_, j) => j !== i))}><i className="fa fa-times"/></button></span></>}>
+     <input type="text" value={s.title} placeholder={`e.g. ${["Michelle's submission check", "Manager's approval", 'Finance approval', 'Cashier', 'Final approval'][i % 5]}`} onChange={ev => set(i, {title: ev.target.value})}/></FieldRow>
+    <PickedField label={`Step ${i + 1}: eligible approvers`} value={semi(s.users)} onPick={async () => { const p = await pickBox({title: `Step ${i + 1} approvers (must hold the approval function)`, selectedUsers: s.users.map(u => u.id)}); if (p) set(i, {users: p.users}); }} onClear={() => set(i, {users: []})}/>
    </div>)}
-   <div className="field hint">Steps are signed in order. A step without users is skipped. Each item chooses which steps it needs.</div>
+   <div className="field"><button className="btn blue" onClick={() => setSteps([...steps, {title: '', users: []}])}><i className="fa fa-plus"/> Add step</button></div>
   </FormPanel>
  </>;
 }
@@ -104,7 +139,7 @@ export function SetBalance({id}: {id: string}) {
    <FieldRow label="Balance/Sum Alias"><input type="text" value={f.balance_alias} onChange={set('balance_alias')} placeholder="e.g. Amount Payable to A"/></FieldRow>
    <FieldRow label={`Notional Balance/Sum (opening, ${f.currency})`}><div className="inline"><input type="text" value={f.notional} onChange={set('notional')}/><span className="muted">Current total: {f.ntotal}</span></div></FieldRow>
    <FieldRow label="Notional Balance/Sum Alias"><input type="text" value={f.notional_alias} onChange={set('notional_alias')} placeholder="e.g. Notional Amount Payable to A"/></FieldRow>
-   <div className="field hint">Balance/Sum = opening balance + every item. Notional Balance/Sum = notional opening balance + items not yet completed.</div>
+   <div className="field hint">Balance/Sum = opening balance + every entered amount (blank amounts count as nothing). Notional Balance/Sum = notional opening balance + items not yet approved, rejected or moved on.</div>
   </FormPanel>
  </>;
 }
