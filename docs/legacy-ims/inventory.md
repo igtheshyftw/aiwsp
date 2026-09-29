@@ -28,7 +28,7 @@ Legend: ✅ already in AiWSP · 🟡 partly there · ❌ missing · ❓ need mor
   - **📁 System Link**: opens its own page (IMS › My eFile › System Link) with a checkbox + Name list (empty for this user), its own search, and a toolbar of 🖧 (hierarchy/org view?), 📁 (folder) and ⚙ (actions). **❓ what an entry looks like once added, and how one is created.**
   - **◌ Recently Updated**: eFiles with recent changes.
   - **red 🔨 To Do**: opens a page (breadcrumb "eFile", so probably also the eFile home) with two tabs:
-    - **Confirm**: presumably items waiting for this user's 1st–5th Confirmation sign-off. **❓ capture this tab.**
+    - **Confirm**: items waiting for this user's sign-off; single Name column, search, paging. Empty for this user. **❓ what a row looks like and what confirming does.**
     - **Process Executor**: eFiles where this user carries out a process step (seen: "Expense Claim Demo - A", "Things to test 1"). "Things to test 1" is not in My eFile, so this list reaches beyond the personal list. Single Name column, search, paging.
   - **⚙** bulk-action menu for the ticked eFiles: Add to My eFile, Remove from My eFile, MTT-MyeFile, Cancel MTT-MyeFile, Share, Cancel Share, Share Balance, Cancel Share Balance, Hide, Cancel Hide, Set Password, Cancel Password, Add/Remove Users, Replace User, Replace eFile Name, Insert eFile Name, Add/Remove Color, **Add to eFile Link**, eFile Process Monitor, Archive.
   - **✱** views menu: Sync With Wechat, Filter By Color, **My Process**, **My Confirmation** (probably items waiting on me), **eFile Link**, Hide List, eFile Explorer, Archive List.
@@ -95,19 +95,29 @@ The To Do page's **Process Executor** tab shows that each process step has an *e
 
 **Key insight:** a *process* is an ordered chain of eFiles, and an item moves from one eFile to the next (claim → payment → approvals → cashier → bank). This is separate from the 1st–5th Confirmation sign-offs inside a single eFile. **❓ need the Set Process dialog to see how a chain is defined, and what moves an item to the next eFile.**
 
-## Item form (lower half captured; opened from an item)
+## Item form (`Edit Item`, opened from an item)
 
-- **Auto Copy eFiles**: table Name | **Change Sign**, plus Select eFile. Saving the item also copies it into these eFiles, optionally with the amount negated. This explains the negative amounts (e.g. a claim of 300 appears as −300 against "Amount Payable to A").
-- **Auto Share eFiles**: table Name, plus Select eFile. The item is shared (not copied) into these eFiles.
-- **Bind eFile**: table eFile Name | Item Name, plus Select eFile. Links this item to a specific item in another eFile.
-- **Confirmation**: checkboxes with Select All. Each step has a **title** chosen on the eFile: "Michelle submission", "Michael's checking", "Manager's approval", "Cashier (Michael)'s submission of monthly expense claim". **Each item picks which confirmation steps apply** (this explains why "A monthly claim - August" shows no ①–④).
-- **Item Date** (e.g. 2023-09-01) and **Target Date** (a due date), each with a date picker and ⊗ clear.
-- **❓ the top half (name, amount, notes, attachments?) and anything below Target Date.**
+Fields top to bottom (green button top-right saves):
+
+1. **Name**: multi-line text ("Entertainment").
+2. **Amount**: number input, with the formatted value shown beside it (200.0 → 200.00).
+3. Flags: **Highlight**, **Move to Top** (pin to top of the list), **Special Marking** (has its own filter in the list).
+4. **Auto Link eFiles**: Name | **Change Sign**. The item is mirrored into these eFiles, optionally with the amount negated. This explains the negative amounts (a 300 claim appearing as −300 against "Amount Payable to A").
+5. **Conditional Auto Link**: eFile Name | **Process Step eFile** | Change Sign. Link into an eFile only when the item reaches a given process stage.
+6. **Split Link**: Name | **Amount**. Split the amount across several eFiles.
+7. **Auto Copy eFiles**: Name | Change Sign. An independent copy, as opposed to a live link.
+8. **Auto Share eFiles**: Name. The same item is visible in other eFiles.
+9. **Bind eFile**: eFile Name | Item Name. Ties this item to a specific item elsewhere.
+10. **Confirmation**: checkboxes with Select All. Each step has a **title** set on the eFile ("Michelle submission", "Michael's checking", "Manager's approval", "Cashier (Michael)'s submission of monthly expense claim"). **Each item picks which steps apply**, which is why "A monthly claim - August" shows no ①–④.
+11. **Item Date** and **Target Date** (due date), each with a date picker and ⊗ clear.
+
+Each link table has a "Select eFile" button to add rows. **❓ does anything follow Target Date (attachments, notes)?**
 
 ## eFile → Item List (inside "Expense Claim Demo - A")
 
 - Breadcrumb IMS › My eFile › <eFile>, tinted with the eFile's colour.
-- Header: "Item List", status filter **Uncompleted**, **Sum: 0**. Toolbar: 🔍 search, ◻, ＋ add item, 💡, ⚙, ✱.
+- Header: "Item List", the active filter name (e.g. **Uncompleted**, **eFile Process**), and **Sum** of the shown items. Toolbar: 🔍 search, ◻, ＋ add item, filter button (icon changes with the active filter), ⚙, ✱.
+- **Filter menu:** Uncompleted, Completed, Special Marking, All, one entry per confirmation step (① Michelle submission … ④ Cashier's submission, i.e. items waiting at that step), **eFile Process** (items in the process), **eFile Completed Process**, **Not Lock Auto Link** (so auto links can be locked).
 - Columns: checkbox, **Item Date**, **Name**, **Amount (CNY)**, then three small buttons per row: blue counter, green counter, purple (menu). **❓ what the blue and green counters count (comments? attachments?).**
 - The two top rows are the eFile's **Balance/Sum** and **Notional Balance/Sum**, shown under their aliases in a darker blue.
 - Name markers: ☆ favourite; ①②③④ the confirmation steps (4 here, matching the setup); a boxed 1 (attachment count?); ⚙⚙ link to another eFile; boxed **C** (completed/confirmed?). "A monthly claim - August" has no ①–④, so it may still be a draft. **❓ confirm.**
@@ -165,10 +175,10 @@ AiWSP: 🟡 has an audit log, but it records changes only and has no module/func
 
 ## Most valuable next captures
 
-1. **Top half of the item form** (name, amount, notes, attachments, …) and anything below Target Date.
-2. **Confirming an item**: what the confirmer sees (To Do → Confirm) and what the buttons are (confirm / reject / comment?).
-3. **Executor's view**: what a Process Executor does to move an item to the next eFile.
-4. The rest of the eFile setup form (below "Sync With Wechat: Group"), especially how confirmation step titles are set.
+1. **Confirming an item**: open one waiting for your sign-off (or its ① marker) and capture the buttons (confirm / reject / comment?).
+2. **Executor's view**: what a Process Executor does to move an item to the next eFile, and what the **C** marker and boxed number on items mean.
+3. The rest of the eFile setup form (below "Sync With Wechat: Group"), especially where confirmation step titles are set.
+4. The item-row counters (blue, green) and the ⚙ / ✱ menus on the Item List toolbar.
 5. What ✱ next to an eFile name means; the red dot in Set Process; Expand eFile; one System Link entry.
 6. Add/edit forms for User, Role (permission matrix), User Group, Company and Client, and what **Share** means.
 7. **Service Team** and **qChat**, each top-bar badge opened, and the user dropdown.
