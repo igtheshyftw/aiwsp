@@ -24,7 +24,10 @@ Legend: ✅ already in AiWSP · 🟡 partly there · ❌ missing · ❓ need mor
 - Owner's note: the markers and toolbar icons relate to **links to other eFiles**. The ⚙⚙ marker uses the "eFile Process Monitor" icon, so it most likely means "this eFile is part of a process". **❓ what ✱ on a name means (Payment eFile has both).**
 - Header toolbar, left to right:
   - **＋** opens a blank **eFile Setup Adminstration** form (create eFile).
-  - **▦**, **📁**, **◌**, **red 🔨**: **❓ not captured yet.**
+  - **▦ Expand eFile**: per the owner. Probably expands the list to show each eFile's items inline. **❓ confirm with a screenshot.**
+  - **📁 System Link**: per the owner. **❓ what it links to.**
+  - **◌ Recently Updated**: eFiles with recent changes.
+  - **red 🔨 To Do**: the user's pending work (likely items awaiting their confirmation or action).
   - **⚙** bulk-action menu for the ticked eFiles: Add to My eFile, Remove from My eFile, MTT-MyeFile, Cancel MTT-MyeFile, Share, Cancel Share, Share Balance, Cancel Share Balance, Hide, Cancel Hide, Set Password, Cancel Password, Add/Remove Users, Replace User, Replace eFile Name, Insert eFile Name, Add/Remove Color, **Add to eFile Link**, eFile Process Monitor, Archive.
   - **✱** views menu: Sync With Wechat, Filter By Color, **My Process**, **My Confirmation** (probably items waiting on me), **eFile Link**, Hide List, eFile Explorer, Archive List.
 - A search box with a 🔒 "locked search" button. The page header has its own search and refresh.
@@ -130,7 +133,7 @@ AiWSP: 🟡 has an audit log, but it records changes only and has no module/func
 1. **Set Process** dialog (how an eFile chain is defined) and what moves an item to the next eFile.
 2. **An item opened**: its form, its confirmation screen, and what happens at each step.
 3. The rest of the eFile setup form (below "Sync With Wechat: Group").
-4. The ▦, 📁, ◌ and red 🔨 toolbar icons, and what ✱ next to an eFile name means.
+4. What ✱ next to an eFile name means; screens for Expand eFile, System Link and To Do.
 5. The ＋ add-item form, and the blue/green counters on an item row.
 6. Add/edit forms for User, Role (permission matrix), User Group, Company and Client, and what **Share** means.
 7. **Service Team** and **qChat**, each top-bar badge opened, and the user dropdown.
