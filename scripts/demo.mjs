@@ -6,10 +6,13 @@ import {existsSync} from 'node:fs';
 const port = Number(process.env.PORT || 3000), base = `http://localhost:${port}`;
 const password = 'demo-password';
 const fresh = !existsSync('demo-data');
+// The stand-in agent (scripts/example-agent.mjs) answers a few FAQ questions so the AiWSP Assistant can be tried.
+const agentPort = port + 100;
+const agent = spawn(process.execPath, ['scripts/example-agent.mjs'], {stdio: 'ignore', env: {...process.env, EXAMPLE_AGENT_PORT: String(agentPort)}});
 const child = spawn(process.execPath, ['dist/server.mjs'], {stdio: ['ignore', 'pipe', 'inherit'], env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: 'demo-data',
- ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: password, ADMIN_NAME: 'WSP System Admin', COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'false'}});
-for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => child.kill('SIGTERM'));
-child.on('exit', code => process.exit(code ?? 0));
+ ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: password, ADMIN_NAME: 'WSP System Admin', COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'false', AGENT_URL: process.env.AGENT_URL || `http://127.0.0.1:${agentPort}/agent`}});
+for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { agent.kill(); child.kill('SIGTERM'); });
+child.on('exit', code => { agent.kill(); process.exit(code ?? 0); });
 await new Promise(r => child.stdout.on('data', d => { process.stdout.write(d); if (String(d).includes('listening')) r(); }));
 
 function session() {
@@ -26,6 +29,10 @@ if (fresh) {
  const add = async (s, username, name_cn, name_en, sex, dept, extra = {}) => (await s('user.save', {companyId: lsk, username, name_cn, name_en, sex, dept, password, level: 3, ...extra})).id;
  const michael = await add(sys, 'Michael', '梁启达', 'Michael Leong', 'M', 'LSK Management,Management', {level: 1});
  await sys('company.chief', {id: lsk, userId: michael});
+ // A WSP professional who handles LSK's assistant conversations (designated on the WSP–LSK connection).
+ const wsp = (await sys('company.list')).find(c => c.operator).id;
+ const staff = (await sys('user.save', {username: 'wsp-staff', name_en: 'WSP Professional', password, level: 2})).id;
+ const link = (await sys('connection.request', {companyId: wsp, to: lsk, users: [staff]})).id;
  await sys('logout');
  const mi = session(); await mi('login', {username: 'Michael', password});
  const william = await add(mi, 'William', '梁广鑫', 'William', 'M', 'LSK Management,Management', {level: 2, position: 'useradmin'});
@@ -50,11 +57,14 @@ if (fresh) {
   {efile_id: claim, executor_id: michael, auto_commit: true}, {efile_id: payment, executor_id: michael}, {efile_id: stages[0], executor_id: william},
   {efile_id: stages[1], executor_id: william}, {efile_id: stages[2], executor_id: michael}, {efile_id: stages[3], executor_id: william, confirm_balance: true}]});
  await mi('invite.create', {companyId: lsk, days: 30});
+ await mi('connection.update', {id: link, companyId: lsk, status: 'connected', users: [michael]});
  await mi('logout');
  const me = session(); await me('login', {username: 'Michelle', password});
  await me('item.save', {efileId: claim, name: 'A monthly claim - August', amount: '-300', item_date: '2023-09-01'});
  await me('item.save', {efileId: claim, name: 'Entertainment', amount: '200', item_date: '2023-09-01', submit: true});
  await me('item.save', {efileId: claim, name: 'Travel to Diacron office', amount: '100', item_date: '2023-09-01', submit: true});
+ await me('chat.start', {text: 'What documents do you need from us for this month?'});
+ await me('chat.start', {text: 'When is our next filing deadline?'});
  await me('logout');
  console.log('Sample data created.');
 }
@@ -63,5 +73,6 @@ console.log(`\nOpen ${base} and sign in with the password "${password}" as:
   William    User Admin (approves step 2)
   Michelle   staff, Level 3 (submits claims)
   john       staff, Level 3
-  wsp-admin  WSP System Admin (sees companies, not LSK's eFiles)
+  wsp-staff  WSP professional (Client Conversations inbox for LSK)
+  wsp-admin  WSP System Admin (sees companies, not LSK's eFiles; assistant settings)
 Press Ctrl+C to stop.`);

@@ -105,7 +105,7 @@ export function eligibleContact(companyId: string, userId: string) {
 }
 
 // ---- System log, with IMS's original Chinese module and function labels.
-export const MODULE = {login: '用户登录/注销', efile: 'eFile', item: 'Item', account: '账户管理', client: '客户管理', process: 'eFile Process', approval: '审批'};
+export const MODULE = {login: '用户登录/注销', efile: 'eFile', item: 'Item', account: '账户管理', client: '客户管理', process: 'eFile Process', approval: '审批', chat: '客户咨询'};
 export const FUNC = {add: '新增', modify: '修改', view: '查看', remove: '删除', download: '下载', approve: '审批', override: '管理员覆盖'};
 export function log(c: Ctx, module: keyof typeof MODULE, fn: keyof typeof FUNC, content: string, companyId = c.companyId) {
  run('INSERT INTO system_log(id,at,company_id,user_id,user_label,module,function,source,content) VALUES(?,?,?,?,?,?,?,?,?)',

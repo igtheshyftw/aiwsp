@@ -13,6 +13,7 @@ import {ItemForm, ItemView} from './pages/item-form';
 import {SetProcess} from './pages/process';
 import {CompanyList, CompanyForm, UserList, UserForm, UserEfiles, RoleList, RoleForm, RoleUsers, GroupList, GroupForm, GroupUsers, GroupEfiles, SystemLog, Profile, Connections, Invitations} from './pages/account';
 import {ClientList, ClientForm} from './pages/client';
+import {AssistantChat, AssistantInbox, AssistantSettings} from './pages/assistant';
 
 function Router({me, setMe}: {me: Me, setMe: (m: Me) => void}) {
  const {parts, query} = useRoute();
@@ -20,6 +21,7 @@ function Router({me, setMe}: {me: Me, setMe: (m: Me) => void}) {
  if (!a) return <Home/>;
  if (a === 'profile') return <Profile me={me} changePassword={!!query.password}/>;
  if (a === 'mfa') return <MfaSetup me={me} onDone={setMe}/>;
+ if (a === 'assistant') return b === 'inbox' ? <AssistantInbox id={c}/> : b === 'settings' ? <AssistantSettings/> : <AssistantChat id={b}/>;
  if (a === 'ims' && b === 'efile') {
   if (!c) return <EfileList view={query.view ?? 'my'} color={query.color}/>;
   if (c === 'new') return <EfileForm/>;

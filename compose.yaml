@@ -19,6 +19,9 @@ services:
       COMPANY_NAME: ${COMPANY_NAME:-}
       COMPANY_NAME_CN: ${COMPANY_NAME_CN:-}
       COMPANY_CODE: ${COMPANY_CODE:-}
+      AGENT_URL: ${AGENT_URL:-}
+      AGENT_TOKEN: ${AGENT_TOKEN:-}
+      AGENT_REVIEW_BELOW: ${AGENT_REVIEW_BELOW:-0}
     volumes:
       - aiwsp_data:/data
 volumes:

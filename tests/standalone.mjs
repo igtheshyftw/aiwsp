@@ -5,15 +5,34 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createServer} from 'node:net';
+import {createServer as createHttpServer} from 'node:http';
 import {randomBytes, createHmac} from 'node:crypto';
 
 const directory = await mkdtemp(join(tmpdir(), 'ims-test-'));
 const probe = createServer(); await new Promise(r => probe.listen(0, '127.0.0.1', r)); const port = probe.address().port; await new Promise(r => probe.close(r));
 const base = 'http://localhost:' + port;
 const adminPassword = 'Test-' + randomBytes(12).toString('hex');
+// A stand-in for the client-answering agent (the real one plugs in through AGENT_URL; see docs/aiwsp/assistant.md).
+const agentRequests = [];
+const agent = createHttpServer(async (req, res) => {
+ let body = ''; for await (const ch of req) body += ch;
+ const r = JSON.parse(body); agentRequests.push(r);
+ const q = r.question.toLowerCase();
+ if (req.headers.authorization !== 'Bearer agent-secret') { res.writeHead(401); return res.end(); }
+ if (q.includes('fail')) { res.writeHead(500); return res.end(); }
+ if (q.includes('stream')) {
+  res.writeHead(200, {'Content-Type': 'text/event-stream'});
+  for (const w of ['Streamed ', 'answer ', 'for ', r.client.company, '.']) { res.write(`data: ${JSON.stringify({delta: w})}\n\n`); await new Promise(x => setTimeout(x, 30)); }
+  res.write(`data: ${JSON.stringify({done: true, sources: [{title: 'Guide', url: 'https://example.com/guide'}]})}\n\n`); return res.end();
+ }
+ res.writeHead(200, {'Content-Type': 'application/json'});
+ res.end(JSON.stringify(q.includes('person') ? {reply: 'Let me bring in a colleague.', handoff: true} : q.includes('unsure') ? {reply: 'Probably yes.', confidence: 0.2} : {reply: `Answer to: ${r.question}`, sources: [{title: 'Checklist'}], confidence: 0.9}));
+});
+await new Promise(r => agent.listen(0, '127.0.0.1', r));
+const agentUrl = `http://127.0.0.1:${agent.address().port}/agent`;
 let child;
 async function start() {
- child = spawn(process.execPath, ['dist/server.mjs'], {env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: directory, ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: adminPassword, COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'true', CLAMAV_HOST: ''}, stdio: ['ignore', 'pipe', 'pipe']});
+ child = spawn(process.execPath, ['dist/server.mjs'], {env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: directory, ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: adminPassword, COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'true', CLAMAV_HOST: '', AGENT_URL: agentUrl, AGENT_TOKEN: 'agent-secret', AGENT_REVIEW_BELOW: '0.5'}, stdio: ['ignore', 'pipe', 'pipe']});
  await new Promise((resolve, reject) => {
   let logs = ''; const timer = setTimeout(() => reject(Error('Server startup timed out: ' + logs)), 15000);
   child.stderr.on('data', x => logs += x);
@@ -250,9 +269,68 @@ try {
  await mi('process.commit', {id: pay.items[0].id});
  assert.deepEqual((await mi('efile.monitor', {id: claim})).stages.map(s => s.items), [0, 0]);
 
+ // ---- AiWSP Assistant: clients ask, the agent answers, WSP professionals review and take over.
+ const settle = async (s, id, staff = false) => { for (let n = 0; n < 100; n++) { const t = await s('chat.get', {id, staff}); if (!t.thinking) return t; await new Promise(r => setTimeout(r, 50)); } throw Error('agent did not finish'); };
+ const q1 = (await ch('chat.start', {text: 'What documents do you need this month?'})).id;
+ let t1 = await settle(ch, q1);
+ assert.equal(t1.messages.at(-1).role, 'agent'); assert.equal(t1.messages.at(-1).body, 'Answer to: What documents do you need this month?');
+ assert.equal(agentRequests.at(-1).client.company, 'LSK & Partners Limited');
+ await ch('chat.send', {id: q1, text: 'Please stream the details'});
+ t1 = await settle(ch, q1);
+ assert.equal(t1.messages.at(-1).body, 'Streamed answer for LSK & Partners Limited.'); assert.equal(t1.messages.at(-1).meta.sources[0].url, 'https://example.com/guide');
+ await ch('chat.rate', {messageId: t1.messages.at(-1).id, rating: 1});
+ // Conversations are private to the client; other clients and unassigned WSP staff cannot open them.
+ await bo('chat.get', {id: q1}, {ok: false});
+ await mi('chat.get', {id: q1}, {ok: false});
+ const staff = (await sys('user.save', {username: 'wsp-staff', name_en: 'WSP Staff', password: pw, level: 2})).id;
+ const st = session(); await signIn(st, 'wsp-staff', pw);
+ assert(!(await st('chat.inbox', {filter: 'all'})).rows.some(r => r.id === q1), 'WSP staff not designated for LSK see none of its conversations');
+ await st('chat.get', {id: q1, staff: true}, {ok: false});
+ await jo('chat.inbox', {}, {ok: false}); // client staff never get the WSP inbox
+ const wspId = (await sys('company.list')).find(x => x.operator).id;
+ const wspLink = (await sys('connection.request', {companyId: wspId, to: lsk, users: [staff]})).id;
+ await mi('connection.update', {id: wspLink, companyId: lsk, status: 'connected', users: [michael]});
+ assert((await st('chat.inbox', {filter: 'all'})).rows.some(r => r.id === q1), 'Designated WSP staff see the client\'s conversations');
+ assert(!(await st('chat.inbox', {filter: 'all'})).rows.some(r => r.company === 'Client B'));
+ // Low-confidence answers wait for review; clients see a placeholder until a professional approves (optionally edited).
+ const q2 = (await ch('chat.start', {text: 'I am unsure whether this is deductible'})).id;
+ let t2 = await settle(ch, q2);
+ assert.equal(t2.messages.at(-1).role, 'system'); assert(!t2.messages.some(m => m.body === 'Probably yes.'));
+ const draft = (await st('chat.get', {id: q2, staff: true})).messages.find(m => m.state === 'review');
+ assert.equal(draft.body, 'Probably yes.');
+ assert.equal((await st('chat.inbox', {filter: 'review'})).counts.review, 1);
+ await st('chat.review', {messageId: draft.id, approve: true, body: 'Yes, under the usual conditions; we will confirm in writing.'});
+ t2 = await ch('chat.get', {id: q2});
+ assert.equal(t2.messages.at(-1).body, 'Yes, under the usual conditions; we will confirm in writing.');
+ // Hand-off to a person; staff reply and internal notes; notes never reach the client or the agent.
+ const q3 = (await ch('chat.start', {text: 'Can I speak to a person?'})).id;
+ await settle(ch, q3);
+ assert.equal((await ch('chat.get', {id: q3})).conversation.status, 'waiting');
+ await st('chat.note', {id: q3, text: 'Client is sensitive about fees'});
+ await st('chat.reply', {id: q3, text: 'Hello, this is WSP. How can I help?'});
+ let t3 = await ch('chat.get', {id: q3});
+ assert.equal(t3.messages.at(-1).role, 'staff'); assert(!t3.messages.some(m => m.body.includes('sensitive')));
+ await ch('chat.send', {id: q3, text: 'Thanks'});
+ assert.equal((await ch('chat.get', {id: q3})).thinking, false, 'The assistant stays quiet after a professional takes over');
+ await st('chat.assign', {id: q3, agent: true});
+ await ch('chat.send', {id: q3, text: 'One more question'});
+ await settle(ch, q3);
+ assert(!JSON.stringify(agentRequests.at(-1)).includes('sensitive'), 'Internal notes are never sent to the agent');
+ // If the agent fails, the client is told and the conversation goes to staff.
+ await ch('chat.send', {id: q3, text: 'This will fail'});
+ t3 = await settle(ch, q3);
+ assert.equal(t3.conversation.status, 'waiting'); assert.equal(t3.messages.at(-1).role, 'system');
+ // Review everything: System Admin setting.
+ await sys('chat.settings', {save: true, enabled: true, review: true, name: 'AiWSP Assistant', welcome: 'Hi', disclaimer: 'General information only.', suggestions: ['A?']});
+ await st('chat.settings', {}, {ok: false});
+ const q4 = (await ch('chat.start', {text: 'Normal question'})).id;
+ await settle(ch, q4);
+ assert.equal((await st('chat.get', {id: q4, staff: true})).messages.at(-1).state, 'review');
+ assert.equal((await ch('chat.list')).length, 4);
+
  // ---- System log records user/permission changes, approvals, overrides, downloads and logins.
  const logs = await mi('log.list', {companyId: lsk});
- for (const f of ['新增用户', '二维码注册', '审批', '管理员覆盖', '下载附件', '用户移交']) assert(logs.some(l => l.content.includes(f) || l.function === f), `log has ${f}`);
+ for (const f of ['新增用户', '二维码注册', '审批', '管理员覆盖', '下载附件', '用户移交', '新建咨询']) assert(logs.some(l => l.content.includes(f) || l.function === f), `log has ${f}`);
  await jo('log.list', {companyId: lsk}, {ok: false});
 
  // Backups run while the server is up and include the database and attachments.
@@ -264,8 +342,9 @@ try {
  await stop(); await start();
  assert.equal((await mi('efile.list', {view: 'explorer'})).length, 2);
  await mi('logout'); await mi('efile.list', {}, {ok: false});
- console.log('PASS: IMS + AiWSP rules — admin MFA, named System Admins, Chief Admin delegation, QR registration, levels and grant limits, temporary accounts, reset links, membership-only eFile access, blank vs zero amounts, ordering, edit conflicts, approval (lock, return/restart, versions, reject, withdraw, pause/reassign, no self-approval, override), attachment safety, departing staff hand-over, connections, processes, system log, restart and logout.');
+ console.log('PASS: IMS + AiWSP rules — admin MFA, named System Admins, Chief Admin delegation, QR registration, levels and grant limits, temporary accounts, reset links, membership-only eFile access, blank vs zero amounts, ordering, edit conflicts, approval (lock, return/restart, versions, reject, withdraw, pause/reassign, no self-approval, override), attachment safety, departing staff hand-over, connections, processes, assistant (agent JSON/streaming, review, hand-off, staff reply, notes, privacy, failures), system log, restart and logout.');
 } finally {
+ agent.close();
  await stop();
  await rm(directory, {recursive: true, force: true});
 }

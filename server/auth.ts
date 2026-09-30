@@ -47,7 +47,7 @@ export async function throttle(req: Request, action: string) {
 }
 
 // Function checkboxes that make up an authorization level. Viewing is implied by eFile membership.
-export const PERMS = ['createFile', 'createItem', 'edit', 'download', 'export', 'submit', 'approve', 'efileAdmin', 'client'] as const;
+export const PERMS = ['createFile', 'createItem', 'edit', 'download', 'export', 'submit', 'approve', 'efileAdmin', 'client', 'clientChat'] as const;
 export const DEFAULT_LEVELS: [number, string, string, string[]][] = [
  [1, 'Level 1', 'Full functions', [...PERMS]],
  [2, 'Level 2', 'All functions except client management', PERMS.filter(p => p !== 'client')],

@@ -10,8 +10,9 @@ import {efile as openEfile, may} from './access';
 import {accountActions} from './actions/account';
 import {efileActions} from './actions/efile';
 import {itemActions} from './actions/item';
+import {chatActions} from './actions/chat';
 
-const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions};
+const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions};
 
 const json = (data: any, status = 200, headers: Record<string, string> = {}) =>
  Response.json(data, {status, headers: {'Cache-Control': 'no-store', ...headers}});
@@ -25,7 +26,7 @@ function me(c: Ctx) {
  };
  return {id: c.user.id, username: c.user.username, name: userLabel(c.user), name_en: c.user.name_en || c.user.username, position: c.position, level: c.user.level,
   company: {id: company.id, name_cn: company.name_cn, name_en: company.name_en, operator: !!company.operator}, sys: c.sys, functions: [...c.perms],
-  perms: Object.entries(menu).filter(([, v]) => v).map(([k]) => k), mfa: !!c.user.totp_secret, mfa_required: requireAdminMfa() && isAdmin(c.user) && !c.user.totp_secret};
+  perms: Object.entries(menu).filter(([, v]) => v).map(([k]) => k), chat_staff: !!(chatActions['chat.config'](c, {}) as any).can_staff, mfa: !!c.user.totp_secret, mfa_required: requireAdminMfa() && isAdmin(c.user) && !c.user.totp_secret};
 }
 
 // Actions an administrator may use before enrolling an authenticator.
@@ -107,6 +108,7 @@ export async function api(req: Request): Promise<Response> {
    log(c, 'account', 'modify', `修改密码:${u!.username}`);
    return json({result: {}}, 200, {'Set-Cookie': await createSession({id: u!.id, revision: u!.revision + 1})});
   }
+  if (action === 'chat.start' || action === 'chat.send') await throttle(req, 'chat:' + u!.id);
   const fn = actions[action]; check(fn, 'Unknown action.');
   return json({result: await fn(c, b)});
  } catch (e: any) {

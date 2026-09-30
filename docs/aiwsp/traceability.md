@@ -62,6 +62,7 @@ Legend: ✅ done and tested · ☑️ done (checked in the browser, not in the a
 |---|---|---|
 | Step by step; responsible approver; only the active step acts; no duplicate decisions; no self-approval by creator/submitter/editor | `item.decide`: eligibility check plus a single-row update | ✅ |
 | Lock submitted item and attachments; notify the next approver; notify all participants at the end | Pending, approved and rejected items refuse edits and attachment changes; notifications at each step | ✅ |
+| Every submission goes through all steps | The owner's choice (30 Sep): no per-item step selection | ✅ |
 | Approve / Return / Reject; reason required for return and reject; corrections create a new version and restart at step 1; keep earlier versions and decisions | `item_version` snapshot per submission; `item_step` rows per round | ✅ |
 | Submitter withdraws with a reason | Withdraw | ✅ |
 | Approver leaves or loses access → pause until an admin assigns an eligible replacement; never skip | The step shows "Paused". The eFile Admin uses Assign approver; paused items are listed under To Do → Paused. | ✅ |

@@ -25,13 +25,13 @@ export function ItemForm({efileId, id}: {efileId: string, id?: string}) {
   api('efile.options').then(setOptions).catch(toastError);
   if (id) withPassword(efileId, password => api('item.get', {id, password})).then(r => {
    setF({name: r.item.name, amount: r.item.amount, item_date: r.item.item_date, target_date: r.item.target_date, highlight: r.item.highlight, move_to_top: r.item.move_to_top, special_marking: r.item.special_marking,
-    version: r.item.version, status: r.item.status, can_submit: r.item.can_submit, steps: r.item.chosen_steps.length ? r.item.chosen_steps : r.steps.map((s: any) => s.position)});
+    version: r.item.version, status: r.item.status, can_submit: r.item.can_submit});
    setEfile(r.efile); setSteps(r.steps);
    setLinks(r.links.map((l: any) => ({id: l.id, kind: l.kind, efile_id: l.target_efile_id, efile_name: l.efile_name, change_sign: l.change_sign, split_amount: l.split_amount, step_efile_id: l.step_efile_id, step_efile_name: l.step_efile_name, item_id: l.target_item_id, item_name: l.item_name, locked: l.locked})));
   }).catch(toastError);
   else api('efile.get', {id: efileId}).then(r => {
    setEfile(r); setSteps(r.steps);
-   setF({name: '', amount: '', item_date: r.show_date ? today() : '', target_date: '', highlight: false, move_to_top: false, special_marking: false, steps: r.steps.map((s: any) => s.position), can_submit: !!r.approval});
+   setF({name: '', amount: '', item_date: r.show_date ? today() : '', target_date: '', highlight: false, move_to_top: false, special_marking: false, can_submit: !!r.approval});
   }).catch(toastError);
  }, [efileId, id]);
  if (!f || !efile) return <Loading/>;
@@ -61,7 +61,6 @@ export function ItemForm({efileId, id}: {efileId: string, id?: string}) {
    toast(submit ? 'Submitted for approval.' : 'Saved.'); go(`/ims/efile/${efileId}/item/${r.id}`);
   } catch (e) { toastError(e); }
  };
- const allSteps = steps.length > 0 && steps.every(s => f.steps.includes(s.position));
  return <>
   <Breadcrumb items={[{label: 'IMS'}, {label: 'My eFile', to: '/ims/efile'}, {label: efile.name, to: `/ims/efile/${efileId}`}]}/>
   <FormPanel title={id ? (f.status === 'returned' ? 'Correct Item' : 'Edit Item') : 'Add Item'} onSave={() => save()} actions={<><button className="btn-sq grey" onClick={() => history.back()} title="Back"><i className="fa fa-undo"/></button><button className="btn-sq" onClick={() => save()} title="Save as draft"><i className="fa fa-check"/></button>
@@ -104,10 +103,9 @@ export function ItemForm({efileId, id}: {efileId: string, id?: string}) {
    </div>)}
    <div className="divider"/>
    <div className="field"><label>Confirmation (approval steps)</label>
-    {!efile.approval ? <p className="muted" style={{margin: 0}}>No approval required in this eFile.</p> : steps.length === 0 ? <p className="muted" style={{margin: 0}}>This eFile has no approval steps yet. Ask its administrator to Set Confirmation.</p> : <div className="checks">
-     <label><input type="checkbox" checked={allSteps} onChange={() => setF({...f, steps: allSteps ? [] : steps.map(s => s.position)})}/>Select All</label>
-     {steps.map(s => <label key={s.position}><input type="checkbox" checked={f.steps.includes(s.position)} onChange={() => setF({...f, steps: f.steps.includes(s.position) ? f.steps.filter((x: number) => x !== s.position) : [...f.steps, s.position]})}/> {s.title}</label>)}
-    </div>}
+    {!efile.approval ? <p className="muted" style={{margin: 0}}>No approval required in this eFile.</p> : steps.length === 0 ? <p className="muted" style={{margin: 0}}>This eFile has no approval steps yet. Ask its administrator to Set Confirmation.</p> : <>
+     <ol style={{margin: 0, paddingLeft: 20}}>{steps.map(s => <li key={s.position}>{s.title} <span className="muted">— {s.users.map((u: any) => u.label).join(', ')}</span></li>)}</ol>
+     <div className="hint">Every submission goes through all steps in this order.</div></>}
    </div>
    <div className="divider"/>
    {efile.show_date && <div className="field"><label>Item Date</label><div className="date"><input type="date" value={f.item_date} onChange={e => setF({...f, item_date: e.target.value})}/><button className="clear" onClick={() => setF({...f, item_date: ''})} aria-label="Clear Item Date"><i className="fa fa-times-circle-o"/></button></div></div>}

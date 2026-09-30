@@ -83,6 +83,23 @@ CREATE TABLE IF NOT EXISTS process_run(
 CREATE TABLE IF NOT EXISTS notification(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, kind TEXT NOT NULL, title TEXT NOT NULL, efile_id TEXT, item_id TEXT, read_at TEXT, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS system_log(id TEXT PRIMARY KEY, at TEXT NOT NULL, company_id TEXT NOT NULL, user_id TEXT NOT NULL, user_label TEXT NOT NULL, module TEXT NOT NULL, function TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'Web', content TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS system_log_at ON system_log(company_id,at);
+-- AiWSP Assistant: client conversations answered by the agent (server/agent.ts) with WSP staff able to review, take over and reply.
+-- status: open (agent answers) | waiting (handed to staff) | closed
+CREATE TABLE IF NOT EXISTS chat_conversation(id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES company(id), user_id TEXT NOT NULL REFERENCES user(id),
+ title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', assigned_to TEXT, agent_on INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS chat_conversation_user ON chat_conversation(user_id, updated_at);
+-- role: client | agent | staff | note (staff-only) | system. state: sent | thinking | review (agent draft waiting for staff) | discarded
+CREATE TABLE IF NOT EXISTS chat_message(id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES chat_conversation(id) ON DELETE CASCADE, role TEXT NOT NULL,
+ author_id TEXT, author TEXT NOT NULL DEFAULT '', body TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'sent', meta TEXT NOT NULL DEFAULT '{}', rating INTEGER,
+ reviewed_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS chat_message_conv ON chat_message(conversation_id, created_at);
+CREATE TABLE IF NOT EXISTS chat_read(user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, conversation_id TEXT NOT NULL REFERENCES chat_conversation(id) ON DELETE CASCADE, at TEXT NOT NULL, PRIMARY KEY(user_id, conversation_id));
+CREATE TABLE IF NOT EXISTS assistant_setting(id INTEGER PRIMARY KEY CHECK (id=1), enabled INTEGER NOT NULL DEFAULT 1, review INTEGER NOT NULL DEFAULT 0,
+ name TEXT NOT NULL DEFAULT 'AiWSP Assistant', welcome TEXT NOT NULL DEFAULT '', disclaimer TEXT NOT NULL DEFAULT '', suggestions TEXT NOT NULL DEFAULT '[]');
+INSERT OR IGNORE INTO assistant_setting(id, welcome, disclaimer, suggestions) VALUES(1,
+ 'Hello. I can answer questions about your matters with WSP. A WSP professional can join the conversation at any time.',
+ 'Answers are general information prepared with AI assistance and reviewed by WSP professionals where needed. They are not formal advice until confirmed in writing.',
+ '["What documents do you need from us for this month?","What is the status of our latest submission?","Can I speak to someone at WSP?"]');
 PRAGMA user_version=${SCHEMA_VERSION};
 `);
 

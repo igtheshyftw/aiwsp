@@ -32,12 +32,16 @@ The screens copy the original IMS. How it works follows the AiWSP requirements i
   - A save is refused if someone else changed the item in the meantime.
   - Attachments are limited to safe types and 10 MB, content-checked, and malware-scanned with ClamAV in production.
 - **Approval:**
-  - Submit, then approve / return / reject step by step, with reasons for return and reject. Nobody approves their own item.
+  - Submit, then approve / return / reject step by step, with reasons for return and reject. Every submission goes through all of the eFile's steps. Nobody approves their own item.
   - A returned item is corrected into a new version and approval restarts from step 1.
   - The submitter can withdraw.
   - A step with no eligible approver pauses until an admin assigns one.
   - System Admin override is recorded separately.
   - Submitted history is never deleted, only archived.
+- **AiWSP Assistant:**
+  - Clients chat with your agent and can ask for a person.
+  - WSP professionals review answers, take over, reply and keep internal notes in a Client Conversations inbox.
+  - The agent plugs in through `AGENT_URL` or `server/agent.ts`; see [docs/aiwsp/assistant.md](docs/aiwsp/assistant.md).
 - **To Do** (home) has four tabs: Confirm, My Items, Paused, Process Executor. Notices show in the top bar. The **System Log** records logins, views, changes, downloads, approvals and overrides.
 
 qChat, Service Team, WeChat/WeCom delivery, item templates and recurring items are not built yet (the document allows WeCom and recurring items later).
@@ -58,7 +62,7 @@ Open http://localhost:3000 and sign in with the password `demo-password` as:
 - **Michelle** or **john**: staff
 - **wsp-admin**: WSP System Admin
 
-Michelle's claims wait for Michael's approval, then William's. The demo turns off the authenticator requirement so you can look around; real installations keep it on. The sample data lives in `./demo-data`; delete that folder to start over.
+Michelle's claims wait for Michael's approval, then William's. The demo also starts a stand-in agent, so the AiWSP Assistant answers a few questions. The demo turns off the authenticator requirement so you can look around; real installations keep it on. The sample data lives in `./demo-data`; delete that folder to start over.
 
 ## Run it for real
 

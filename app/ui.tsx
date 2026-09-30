@@ -3,7 +3,7 @@ import {useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode} f
 import {api, go, href, useRoute, fmtTime} from './lib';
 
 export type Me = {id: string, username: string, name: string, name_en: string, position: string, level: number, company: {id: string, name_cn: string, name_en: string, operator: boolean},
- sys: boolean, perms: string[], functions: string[], mfa: boolean, mfa_required: boolean};
+ sys: boolean, perms: string[], functions: string[], mfa: boolean, mfa_required: boolean, chat_staff: boolean};
 export const POSITION: Record<string, string> = {system: 'System Admin', chief: 'Chief Admin', useradmin: 'User Admin', member: 'User'};
 
 // ---------- Toasts and dialogs (module-level so any page can call them)
@@ -139,8 +139,11 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
  useEffect(() => { if (section) setOpen(section); }, [section]);
  const [collapsed, setCollapsed] = useState(false);
  useEffect(() => { document.body.classList.toggle('collapsed', collapsed); }, [collapsed]);
- const [counters, setCounters] = useState({messages: 0, confirm: 0});
- useEffect(() => { const load = () => api('counters').then(setCounters).catch(() => {}); load(); const t = setInterval(load, 30000); return () => clearInterval(t); }, [route.path]);
+ const [counters, setCounters] = useState({messages: 0, confirm: 0, chat: 0});
+ useEffect(() => {
+  const load = () => Promise.all([api('counters'), api('chat.counters')]).then(([a, b]) => setCounters({...a, chat: b.mine + b.staff})).catch(() => {});
+  load(); const t = setInterval(load, 30000); return () => clearInterval(t);
+ }, [route.path]);
  const perms = new Set(me.perms);
  const accountItems: [string, string, string][] = ([['company', 'Company', '/account/company'], ['user', 'User', '/account/user'], ['role', 'Role', '/account/role'], ['group', 'User Group', '/account/group'], ['connection', 'Connection', '/account/connection'], ['log', 'System Log', '/account/log']] as [string, string, string][]).filter(([p]) => perms.has(p));
  const active = (p: string) => route.path === p || route.path.startsWith(p + '/');
@@ -148,7 +151,7 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
   <header className="topbar">
    <a className="logo" href={href('/')} aria-label="IMS home"><b>IMS<small>eFile</small></b></a>
    <span className="spacer"/>
-   <Notices counters={counters}/>
+   <Notices counters={counters} chatStaff={me.chat_staff}/>
    <Menu items={[
     {icon: 'fa-user', label: 'My Profile', onClick: () => go('/profile')},
     {icon: 'fa-key', label: 'Change Password', onClick: () => go('/profile?password=1')},
@@ -161,6 +164,7 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
    <button className="toggle" onClick={() => setCollapsed(c => !c)} aria-label="Toggle menu"><i className="fa fa-bars"/></button>
    <ul className="menu">
     <li><a href={href('/')}><i className="fa fa-home"/><span className="label">eFile</span></a></li>
+    <li className={route.parts[0] === 'assistant' ? 'current' : ''}><a href={href(me.chat_staff ? '/assistant/inbox' : '/assistant')}><i className="fa fa-comments"/><span className="label">AiWSP Assistant</span></a></li>
     <li className={open === 'ims' ? 'open' : ''}>
      <a href="#" onClick={e => { e.preventDefault(); setOpen(open === 'ims' ? '' : 'ims'); }}><i className="fa fa-table"/><span className="label">IMS</span><i className="fa fa-angle-left arrow"/></a>
      {open === 'ims' && <ul className="submenu">
@@ -181,12 +185,12 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
  </>;
 }
 
-function Notices({counters}: {counters: {messages: number, confirm: number}}) {
+function Notices({counters, chatStaff}: {counters: {messages: number, confirm: number, chat: number}, chatStaff: boolean}) {
  const [list, setList] = useState<any[] | null>(null);
  const openInbox = async () => { try { setList(await api('notifications')); await api('notifications.read'); } catch (e) { toastError(e); } };
  const soon = (what: string) => () => toast(`${what} is not available in this version.`);
  return <>
-  <button className="badge-btn" title="qChat" onClick={soon('qChat')}><span className="count green">0</span><i className="fa fa-comment-o"/></button>
+  <button className="badge-btn" title="AiWSP Assistant" onClick={() => go(chatStaff ? '/assistant/inbox' : '/assistant')}><span className="count green">{counters.chat}</span><i className="fa fa-comment-o"/></button>
   <button className="badge-btn" title="Service Team" onClick={soon('Service Team')}><span className="count purple">0</span><i className="fa fa-sitemap"/></button>
   <button className="badge-btn" title="To Do: confirmations" onClick={() => go('/')}><span className="count red">{counters.confirm}</span><i className="fa fa-bullhorn"/></button>
   <button className="badge-btn" title="Messages" onClick={openInbox}><span className="count blue">{counters.messages}</span><i className="fa fa-envelope"/></button>

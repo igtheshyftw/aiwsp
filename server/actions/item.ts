@@ -45,8 +45,8 @@ function stepState(i: Row, e: Row) {
 function submit(c: Ctx, i: Row, e: Row, note = '') {
  check(e.approval, 'This eFile does not require approval.');
  const defined = efileSteps(e.id);
- const chosen: number[] = JSON.parse(i.steps || '[]');
- const use = defined.filter(s => !chosen.length || chosen.includes(s.position));
+ // Every submission goes through all of the eFile's steps, in order.
+ const use = defined;
  check(use.length, 'This eFile has no approval steps. Ask its administrator to Set Confirmation.');
  const round = i.round + 1;
  const snapshot = JSON.stringify({name: i.name, amount: i.amount, currency: i.currency, item_date: i.item_date, target_date: i.target_date, attachments: all('SELECT id, filename, size FROM item_attachment WHERE item_id=?', i.id)});
@@ -211,7 +211,7 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
    .map(l => ({...l, split_amount: fmt(l.split_amount), change_sign: !!l.change_sign, locked: !!l.locked}));
   const rounds = all('SELECT * FROM item_step WHERE item_id=? ORDER BY round DESC, position', i.id).map(s => ({...s, approvers: JSON.parse(s.approvers).map((u: string) => ({id: u, label: who(u), eligible: eligible(u, i, e)})), decided_by: who(s.decided_by)}));
   return {
-   item: {...itemRow(c, i, e), created_by: who(i.created_by), submitted_by: who(i.submitted_by), created_at: i.created_at, updated_at: i.updated_at, source_kind: i.source_kind, round: i.round, chosen_steps: JSON.parse(i.steps || '[]')},
+   item: {...itemRow(c, i, e), created_by: who(i.created_by), submitted_by: who(i.submitted_by), created_at: i.created_at, updated_at: i.updated_at, source_kind: i.source_kind, round: i.round},
    efile: {id: e.id, name: e.name, currency: e.currency, color: e.color, role: e.role, approval: !!e.approval, show_date: !!e.show_date, show_amount: !!e.show_amount},
    links, steps: efileSteps(e.id), rounds,
    versions: all('SELECT version, by, at, snapshot FROM item_version WHERE item_id=? ORDER BY version DESC', i.id).map(v => ({...v, by: who(v.by), snapshot: JSON.parse(v.snapshot)})),
@@ -236,9 +236,6 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
    amount: e.show_amount ? cents(b.amount) : existing ? existing.amount : null,
    item_date: e.show_date ? date(b.item_date, 'Item Date') : existing ? existing.item_date : '',
    target_date: date(b.target_date, 'Target Date'), highlight: bool(b.highlight), move_to_top: bool(b.move_to_top), special_marking: bool(b.special_marking)};
-  const definedSteps = all('SELECT position FROM efile_step WHERE efile_id=?', e.id).map(s => s.position);
-  const chosen = Array.isArray(b.steps) ? b.steps.map(Number).filter((p: number) => definedSteps.includes(p)) : definedSteps;
-  if (e.approval) check(chosen.length, 'Choose at least one approval step.');
   const links = (Array.isArray(b.links) ? b.links : []).slice(0, 50).map((l: any) => {
    check(LINK_KINDS.includes(l.kind), 'Unknown link type.');
    const target = openEfile(c, l.efile_id, l.kind === 'bind' || l.kind === 'auto_share' ? 'view' : 'edit');
@@ -254,9 +251,9 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
    const id = existing?.id ?? uid(), t = now();
    const eds = [...new Set([...(existing ? editors(existing) : []), c.user.id])];
    if (existing) run('UPDATE item SET name=?,amount=?,item_date=?,target_date=?,highlight=?,move_to_top=?,special_marking=?,steps=?,editors=?,version=version+1,updated_at=? WHERE id=?',
-    f.name, f.amount, f.item_date, f.target_date, f.highlight, f.move_to_top, f.special_marking, JSON.stringify(chosen), JSON.stringify(eds), t, id);
+    f.name, f.amount, f.item_date, f.target_date, f.highlight, f.move_to_top, f.special_marking, '[]', JSON.stringify(eds), t, id);
    else run('INSERT INTO item(id,seq,efile_id,name,amount,currency,item_date,target_date,highlight,move_to_top,special_marking,status,steps,editors,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    id, nextSeq(), e.id, f.name, f.amount, e.currency, f.item_date, f.target_date, f.highlight, f.move_to_top, f.special_marking, e.approval ? 'draft' : 'none', JSON.stringify(chosen), JSON.stringify(eds), c.user.id, t, t);
+    id, nextSeq(), e.id, f.name, f.amount, e.currency, f.item_date, f.target_date, f.highlight, f.move_to_top, f.special_marking, e.approval ? 'draft' : 'none', '[]', JSON.stringify(eds), c.user.id, t, t);
    // Links: keep rows (and their generated items) that are unchanged, replace the rest.
    const old = all('SELECT * FROM item_link WHERE item_id=?', id);
    const same = (a: Row, z: Row) => a.kind === z.kind && a.target_efile_id === z.target_efile_id && a.step_efile_id === z.step_efile_id && (a.kind !== 'bind' || a.target_item_id === z.target_item_id);
