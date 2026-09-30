@@ -32,6 +32,9 @@ export function managesUsers(c: Ctx, companyId: string) {
  if (c.companyId === companyId && ['chief', 'useradmin'].includes(c.position)) return true;
  return c.sys && (!!company(companyId)?.sys_manage_users || !liveChief(companyId));
 }
+// Adding and deleting accounts: whoever manages the company's users, and System Admins for every company,
+// so WSP can open and close client accounts even where the client has not delegated user management.
+export const addsUsers = (c: Ctx, companyId: string) => managesUsers(c, companyId) || c.sys;
 export function managesConnections(c: Ctx, companyId: string) {
  if (c.companyId === companyId && ['chief', 'useradmin'].includes(c.position)) return true;
  return c.sys && (!!company(companyId)?.sys_manage_connections || !liveChief(companyId));
@@ -75,7 +78,7 @@ export function find(table: string, id: any, label = 'Record') {
 const RANK: Record<string, number> = {member: 0, useradmin: 1, chief: 2, system: 3};
 export function manageableUser(c: Ctx, id: any) {
  const u = find('user', id, 'User');
- check(managesUsers(c, u.company_id), 'User is unavailable.');
+ check(u.state !== 'deleted' && managesUsers(c, u.company_id), 'User is unavailable.');
  check(u.id !== c.user.id, 'Use My Profile for your own account.');
  check(c.sys || RANK[c.position] > RANK[u.position], 'You cannot change an administrator of equal or higher standing.');
  return u;

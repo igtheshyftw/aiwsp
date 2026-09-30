@@ -106,6 +106,10 @@ export function UserList({me, companyId}: {me: Me, companyId?: string}) {
    if (efileIds) { await api('user.links.save', {id: u.id, efileIds}); toast(`${efileIds.length} eFile link(s) assigned.`); }
   } catch (e) { toastError(e); }
  };
+ const remove = async (u: any) => {
+  if (!await confirmBox(`Delete ${u.username}'s account? They can no longer sign in and lose every eFile, group and connection role. If the account has any history (items, approvals, messages, log entries), the record is kept so that history still shows who did what; otherwise it is removed completely. This cannot be undone.`)) return;
+  try { const r = await api('user.delete', {id: u.id}); toast(r.removed ? `${u.username} was removed.` : `${u.username} was deleted; their history is kept.`); reload(); } catch (e) { toastError(e); }
+ };
  const soon = (what: string) => () => toast(`${what} is not available in this version.`);
  const menu = (u: any): MenuItem[] => [
   {icon: 'fa-edit', label: 'Edit', onClick: () => go(`/account/user/${u.id}`), disabled: u.id === me.id},
@@ -125,8 +129,12 @@ export function UserList({me, companyId}: {me: Me, companyId?: string}) {
   {icon: 'fa-times', label: u.state === 'normal' ? 'Invalid' : 'Restore', onClick: () => invalid(u), disabled: u.id === me.id},
   {icon: 'fa-eye-slash', label: 'Replace', onClick: () => transfer('replace', 'Replace (hands everything over, then sets invalid)')(u)},
   {icon: 'fa-wrench', label: 'Insert', onClick: () => transfer('insert', 'Insert (add the chosen user wherever this user is)')(u)},
+  deleteItem(u),
  ];
- const readOnly: MenuItem[] = [{icon: 'fa-lock', label: 'View only — this company has not authorised WSP to manage its users', disabled: true}];
+ const deleteItem = (u: any): MenuItem => ({icon: 'fa-trash-o', label: 'Delete', onClick: () => remove(u), disabled: u.id === me.id});
+ const readOnly = (g: any, u: any): MenuItem[] => [
+  ...(g.can_add ? [deleteItem(u)] : []),
+  {icon: 'fa-lock', label: g.can_add ? 'Other changes: this company has not authorised WSP to manage its users' : 'View only — this company has not authorised WSP to manage its users', disabled: true}];
  const needle = search.trim().toLowerCase();
  const matches = (u: any) => !needle || [u.username, u.name_cn, u.name_en, u.dept, u.email, u.mobile, u.role_label].join(' ').toLowerCase().includes(needle);
  const groups = (data?.groups ?? []).filter((g: any) => !companyId || g.company.id === companyId).map((g: any) => ({...g, shown: g.users.filter(matches)}));
@@ -150,10 +158,10 @@ export function UserList({me, companyId}: {me: Me, companyId?: string}) {
      {g.company.code && <span className="muted">{g.company.code}</span>}
      {g.company.operator && <span className="ext">Operator</span>}{g.company.status !== 'normal' && <span className="special">(Suspended)</span>}
      <span className="muted">· {g.shown.length} user{g.shown.length === 1 ? '' : 's'}{g.company.chief && ` · Chief Admin: ${g.company.chief}`}</span>
-     {!g.can_manage && <span className="ext">View only</span>}
-     {g.can_manage && <span className="tools" onClick={e => e.stopPropagation()}>
+     {!g.can_manage && <span className="ext">{g.can_add ? 'Add and delete only' : 'View only'}</span>}
+     {g.can_add && <span className="tools" onClick={e => e.stopPropagation()}>
       <button className="btn green" onClick={() => go(`/account/user/new${q(g.company.id)}`)}><i className="fa fa-plus"/> Add User</button>
-      <button className="btn plain" onClick={() => go(`/account/invite${q(g.company.id)}`)}><i className="fa fa-qrcode"/> QR Code</button></span>}
+      {g.can_manage && <button className="btn plain" onClick={() => go(`/account/invite${q(g.company.id)}`)}><i className="fa fa-qrcode"/> QR Code</button>}</span>}
     </div>
     {!closed.includes(g.company.id) && <DataTable rows={g.shown} search={false} pageSize={50} rowClass={(u: any) => u.live ? '' : 'muted'} emptyText={needle ? 'No matching users.' : 'No users yet.'}
      columns={[
@@ -166,7 +174,7 @@ export function UserList({me, companyId}: {me: Me, companyId?: string}) {
       {key: 'mobile', title: 'Mobile (WeCom)', sort: (r: any) => r.mobile},
       {key: 'role_label', title: 'Role', sort: (r: any) => r.role_label, render: (r: any) => <>{r.role_label}{!r.live && <span className="special">({r.state === 'invalid' ? 'Invalid' : 'Expired'})</span>}{['system', 'chief', 'useradmin'].includes(r.position) && !r.mfa && <span className="ext">No authenticator</span>}</>},
      ]}
-     menu={(u: any) => g.can_manage ? menu(u) : readOnly}/>}
+     menu={(u: any) => g.can_manage ? menu(u) : readOnly(g, u)}/>}
    </div>)}
   </Panel>
  </>;

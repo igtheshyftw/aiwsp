@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import {all, get, run, uid, now, tx, type Row} from '../db';
 import {check, hashPassword, validPassword, digest, live, PERMS, seedLevels, publicOrigin} from '../auth';
 import {type Ctx, allowed, needPerm, text, required, bool, ids, date, companyScope, find, manageableUser, userLabel, log, notify,
- companyAdmin, managesUsers, managesConnections, viewsLog, liveChief, userManagers, connectedUserIds, eligibleContact, userPerms} from '../ctx';
+ companyAdmin, managesUsers, addsUsers, managesConnections, viewsLog, liveChief, userManagers, connectedUserIds, eligibleContact, userPerms} from '../ctx';
 import {liveAdmins} from '../access';
 
 const COMPANY_TYPES = ['Communicative', 'Operating', 'Client', 'Supplier', 'Partner'];
@@ -94,23 +94,24 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
  'user.list'(c, b) {
   const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
   const state = ['normal', 'invalid'].includes(b.state) ? b.state : '';
-  const rows = all(`SELECT * FROM user WHERE company_id=? ${state ? 'AND state=?' : ''} ORDER BY created_at`, ...(state ? [companyId, state] : [companyId]));
+  const rows = all(`SELECT * FROM user WHERE company_id=? AND state<>'deleted' ${state ? 'AND state=?' : ''} ORDER BY created_at`, ...(state ? [companyId, state] : [companyId]));
   return {company: get('SELECT * FROM company WHERE id=?', companyId), users: rows.map(publicUser), can_manage: managesUsers(c, companyId), can_invite: managesUsers(c, companyId)};
  },
  // Every account, grouped by company. System Admins see all companies; other managers see the companies they manage.
- // Seeing an account is not managing it: rows of companies this user does not manage are read-only.
+ // Seeing an account is not managing it: rows of companies this user does not manage are read-only,
+ // except that System Admins may always add and delete accounts there (addsUsers).
  'user.all'(c, b) {
   const state = ['normal', 'invalid'].includes(b.state) ? b.state : '';
   const companies = (c.sys ? all('SELECT * FROM company ORDER BY operator DESC, name_cn') : all('SELECT * FROM company WHERE id=?', c.companyId)).filter(co => c.sys || managesUsers(c, co.id));
   check(companies.length, 'You do not manage any users.');
   return {groups: companies.map(co => ({
    company: {id: co.id, name_cn: co.name_cn, name_en: co.name_en, code: co.code, status: co.status, operator: !!co.operator, chief: liveChief(co.id)?.username ?? ''},
-   can_manage: managesUsers(c, co.id),
-   users: all(`SELECT * FROM user WHERE company_id=? ${state ? 'AND state=?' : ''} ORDER BY created_at`, ...(state ? [co.id, state] : [co.id])).map(publicUser),
+   can_manage: managesUsers(c, co.id), can_add: addsUsers(c, co.id),
+   users: all(`SELECT * FROM user WHERE company_id=? AND state<>'deleted' ${state ? 'AND state=?' : ''} ORDER BY created_at`, ...(state ? [co.id, state] : [co.id])).map(publicUser),
   }))};
  },
  'user.form'(c, b) {
-  const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
+  const companyId = companyScope(c, b.companyId, id => addsUsers(c, id));
   return {levels: all('SELECT level, name, description, perms FROM level WHERE company_id=? ORDER BY level', companyId).map(l => ({...l, perms: JSON.parse(l.perms)})),
    perms: PERMS, admins: all(`SELECT id, username FROM user WHERE company_id=? AND position IN ('chief','useradmin') AND state='normal' ORDER BY username`, companyId),
    can_appoint_useradmin: companyAdmin(c, companyId), can_appoint_system: c.sys && !!get('SELECT operator FROM company WHERE id=?', companyId)?.operator, my_level: c.user.level, my_perms: [...c.perms], sys: c.sys};
@@ -121,7 +122,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
  },
  async 'user.save'(c, b) {
   const existing = b.id ? manageableUser(c, b.id) : null;
-  const companyId = existing ? existing.company_id : companyScope(c, b.companyId, id => managesUsers(c, id));
+  const companyId = existing ? existing.company_id : companyScope(c, b.companyId, id => addsUsers(c, id));
   const f = {username: required(b.username, 'Name', 40), name_cn: text(b.name_cn, 80), name_en: text(b.name_en, 80), sex: ['M', 'F'].includes(b.sex) ? b.sex : '',
    dept: text(b.dept, 200), email: text(b.email, 120), mobile: text(b.mobile, 40), level: Number(b.level ?? 3), expires: date(b.expires, 'Expiry date'), responsible_id: text(b.responsible_id, 64) || null};
   check(/^[A-Za-z0-9._-]{2,40}$/.test(f.username), 'Name may contain 2–40 letters, numbers, dots, hyphens or underscores.');
@@ -165,6 +166,35 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
    if (state === 'invalid') notify(all(`SELECT DISTINCT m.user_id FROM efile_member m JOIN efile_step_user s ON s.efile_id=m.efile_id AND s.user_id=? WHERE m.kind='admin'`, u.id).map(r => r.user_id), 'access', `${u.username} has left. Reassign their pending approvals.`);
   });
   return {state, pending: userEfiles(u.id).reduce((s, r) => s + r.pending, 0)};
+ },
+ // Delete an account: Chief/User Admins for users they manage, System Admins for any company. An account that never did anything
+ // is removed outright. One with history is closed for good: sign-in, memberships and assignments go, and the record stays so past
+ // actions keep their author (urgent-functions.md: departed users' historical actions are retained). Its approval steps pause for reassignment.
+ 'user.delete'(c, b) {
+  const u = c.sys ? find('user', b.id, 'User') : manageableUser(c, b.id);
+  check(u.state !== 'deleted' && addsUsers(c, u.company_id), 'User is unavailable.');
+  check(u.id !== c.user.id, 'You cannot delete your own account.');
+  if (u.position === 'system') check(all(`SELECT id FROM user WHERE position='system' AND state='normal' AND id<>?`, u.id).length, 'Keep at least one active System Admin.');
+  const history = [
+   'SELECT 1 FROM system_log WHERE user_id=?', 'SELECT 1 FROM item WHERE created_by=? OR submitted_by=?', 'SELECT 1 FROM item_event WHERE actor_id=?',
+   'SELECT 1 FROM item_version WHERE by=?', 'SELECT 1 FROM item_step WHERE decided_by=?', 'SELECT 1 FROM item_comment WHERE user_id=?',
+   'SELECT 1 FROM item_attachment WHERE uploaded_by=?', 'SELECT 1 FROM efile WHERE created_by=?', 'SELECT 1 FROM invite WHERE created_by=?',
+   'SELECT 1 FROM chat_conversation WHERE user_id=? OR assigned_to=?', 'SELECT 1 FROM chat_message WHERE author_id=? OR reviewed_by=?',
+   'SELECT 1 FROM process_stage WHERE executor_id=?', 'SELECT 1 FROM user WHERE responsible_id=?',
+  ].some(sql => get(sql + ' LIMIT 1', ...Array((sql.match(/\?/g) ?? []).length).fill(u.id)));
+  const admins = all(`SELECT DISTINCT m.user_id FROM efile_member m JOIN efile_step_user s ON s.efile_id=m.efile_id AND s.user_id=? WHERE m.kind='admin' AND m.user_id<>?`, u.id, u.id).map(r => r.user_id);
+  tx(() => {
+   run('DELETE FROM sessions WHERE user_id=?', u.id);
+   if (!history) run('DELETE FROM user WHERE id=?', u.id);
+   else {
+    for (const t of ['efile_member', 'efile_step_user', 'user_group_member', 'connection_user', 'efile_share', 'user_efile', 'item_star', 'notification', 'chat_read']) run(`DELETE FROM ${t} WHERE user_id=?`, u.id);
+    run('UPDATE chat_conversation SET assigned_to=NULL WHERE assigned_to=?', u.id);
+    run(`UPDATE user SET state='deleted', pass='', totp_secret='', totp_pending='', reset_hash='', reset_expires='', revision=revision+1 WHERE id=?`, u.id);
+    if (admins.length) notify(admins, 'access', `${u.username}'s account was deleted. Reassign their pending approvals.`);
+   }
+   log(c, 'account', 'remove', `删除用户:${u.username}${history ? ' (保留历史记录)' : ''}`, u.company_id);
+  });
+  return {removed: !history};
  },
  // Secure password reset: a one-time link, valid for one hour. Stored passwords are never shown.
  async 'user.reset'(c, b) {
@@ -255,7 +285,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
  'role.list'(c, b) {
   const companyId = companyScope(c, b.companyId, id => companyAdmin(c, id) || managesUsers(c, id));
   return {company: get('SELECT id,name_cn,name_en FROM company WHERE id=?', companyId), can_edit: companyAdmin(c, companyId), perms: PERMS,
-   levels: all('SELECT l.*, (SELECT COUNT(*) FROM user u WHERE u.company_id=l.company_id AND u.level=l.level) AS users FROM level l WHERE company_id=? ORDER BY level', companyId).map(l => ({...l, id: String(l.level), perms: JSON.parse(l.perms)}))};
+   levels: all(`SELECT l.*, (SELECT COUNT(*) FROM user u WHERE u.company_id=l.company_id AND u.level=l.level AND u.state<>'deleted') AS users FROM level l WHERE company_id=? ORDER BY level`, companyId).map(l => ({...l, id: String(l.level), perms: JSON.parse(l.perms)}))};
  },
  'role.save'(c, b) {
   const companyId = companyScope(c, b.companyId, id => companyAdmin(c, id));
@@ -271,7 +301,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
  },
  'role.users'(c, b) {
   const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
-  return {role: {name: levelName(companyId, Number(b.level))}, users: all('SELECT * FROM user WHERE company_id=? AND level=? ORDER BY username', companyId, Number(b.level)).map(publicUser)};
+  return {role: {name: levelName(companyId, Number(b.level))}, users: all(`SELECT * FROM user WHERE company_id=? AND level=? AND state<>'deleted' ORDER BY username`, companyId, Number(b.level)).map(publicUser)};
  },
 
  // ---------------- User Group (company groups; external members only from approved connections)

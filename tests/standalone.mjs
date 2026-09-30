@@ -105,6 +105,21 @@ try {
  // The user list still shows every account, grouped by company, but read-only where WSP may not manage.
  const everyone = await sys('user.all', {});
  assert.deepEqual(everyone.groups.map(g => [g.company.name_en, g.can_manage, g.users.length]), [['WSP', true, 2], ['LSK & Partners Limited', false, 1]]);
+ // Even without delegation, System Admins add and delete client accounts, but cannot otherwise change them.
+ assert.deepEqual(everyone.groups.map(g => g.can_add), [true, true]);
+ const added = (await sys('user.save', {companyId: lsk, username: 'onboard1', name_en: 'Onboarded by WSP', password: pw, level: 3})).id;
+ await sys('user.save', {id: added, username: 'onboard1', level: 2}, {ok: false});
+ await sys('user.state', {id: added}, {ok: false});
+ assert.equal((await sys('user.delete', {id: added})).removed, true, 'An account with no history is removed outright');
+ const leaver = (await sys('user.save', {companyId: lsk, username: 'leaver1', password: pw, level: 3})).id;
+ const le = session(); await signIn(le, 'leaver1', pw);
+ assert.equal((await sys('user.delete', {id: leaver})).removed, false, 'An account with history is closed but kept');
+ await le('efile.list', {}, {ok: false}); // its session ended
+ await session()('login', {username: 'leaver1', password: pw}, {ok: false});
+ await sys('user.delete', {id: leaver}, {ok: false}); // already deleted
+ await sys('user.save', {companyId: lsk, username: 'leaver1', password: pw, level: 3}, {ok: false}); // the name stays reserved for the history
+ assert.equal((await sys('user.all', {})).groups[1].users.length, 1);
+ await sys('user.delete', {id: (await sys('profile.get')).id ?? ''}, {ok: false});
  await mi('company.save', {id: lsk, name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', sys_manage_users: true, sys_manage_connections: false});
  assert.equal((await sys('user.list', {companyId: lsk})).users.length, 1);
  await mi('company.save', {id: lsk, name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', sys_manage_users: false, sys_manage_connections: false});
@@ -139,6 +154,7 @@ try {
  await wi('user.save', {id: john, username: 'john', level: 3, perms: {client: true}}, {ok: false});
  await wi('user.save', {id: michael, username: 'Michael', level: 1}, {ok: false});
  await wi('user.save', {id: john, username: 'john', level: 3, position: 'useradmin'}, {ok: false});
+ await wi('user.delete', {id: michael}, {ok: false}); // a User Admin cannot delete the Chief Admin
  await wi('user.save', {id: john, username: 'john', name_en: 'John', level: 3, perms: {export: true}}); // William holds export at Level 2
  // Password reset is a one-time link; stored passwords are never shown.
  const {link} = await wi('user.reset', {id: john});
