@@ -391,19 +391,31 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
 
  // ---------------- Client Management
  'client.list'(c) { needPerm(c, 'client'); return all('SELECT * FROM client WHERE company_id=? ORDER BY code', c.companyId); },
- 'client.get'(c, b) { needPerm(c, 'client'); const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId); return r; },
+ 'client.get'(c, b) {
+  needPerm(c, 'client'); const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId);
+  return {...r,
+   users: all(`SELECT u.* FROM client_team t JOIN user u ON u.id=t.ref_id WHERE t.client_id=? AND t.kind='user' ORDER BY u.username`, r.id).map(u => ({id: u.id, label: userLabel(u)})),
+   groups: all(`SELECT g.id, g.name AS label FROM client_team t JOIN user_group g ON g.id=t.ref_id WHERE t.client_id=? AND t.kind='group' ORDER BY g.name`, r.id)};
+ },
+ // Client Info, three steps: 1 Basic Info, 2 Background Info (profile), 3 Service Team (users or user groups).
  'client.save'(c, b) {
   needPerm(c, 'client');
-  const f = [required(b.code, 'Code', 40), text(b.name_cn, 120), text(b.name_en, 120), text(b.contact, 80), text(b.phone, 40), text(b.email, 120), text(b.address, 300), text(b.remark, 2000)];
-  check(f[1] || f[2], 'Enter a CN Name or EN Name.');
+  const f = {code: required(b.code, 'Code', 40), name_cn: required(b.name_cn, 'CN Name', 120), name_en: required(b.name_en, 'EN Name', 120), phone: text(b.phone, 40), fax: text(b.fax, 40),
+   introducer: text(b.introducer, 120), website: text(b.website, 200), address: text(b.address, 300), business: text(b.business, 300), remark: text(b.remark, 2000),
+   team_type: b.team_type === 'user' ? 'user' : 'group'};
+  const refs = f.team_type === 'user' ? ids(b.users) : ids(b.groups);
+  for (const r of refs) check(f.team_type === 'user' ? eligibleContact(c.companyId, r) : get('SELECT 1 FROM user_group WHERE id=? AND company_id=?', r, c.companyId),
+   f.team_type === 'user' ? 'Service team users must be your staff or approved connection contacts.' : 'Choose groups of your company.');
+  const existing = b.id ? find('client', b.id, 'Client') : null;
+  if (existing) check(existing.company_id === c.companyId);
+  check(!get('SELECT id FROM client WHERE company_id=? AND code=? AND id<>?', c.companyId, f.code, existing?.id ?? ''), 'This client code is already used.');
   return tx(() => {
-   if (b.id) {
-    const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId);
-    run('UPDATE client SET code=?,name_cn=?,name_en=?,contact=?,phone=?,email=?,address=?,remark=? WHERE id=?', ...f, r.id); log(c, 'client', 'modify', `修改客户:${f[0]}`); return {id: r.id};
-   }
-   check(!get('SELECT id FROM client WHERE company_id=? AND code=?', c.companyId, f[0]), 'This client code is already used.');
-   const id = uid(); run('INSERT INTO client(id,company_id,code,name_cn,name_en,contact,phone,email,address,remark) VALUES(?,?,?,?,?,?,?,?,?,?)', id, c.companyId, ...f);
-   log(c, 'client', 'add', `新增客户:${f[0]}`); return {id};
+   const id = existing?.id ?? uid(); const cols = Object.keys(f); const vals = Object.values(f);
+   if (existing) run(`UPDATE client SET ${cols.map(k => k + '=?').join(',')} WHERE id=?`, ...vals, id);
+   else run(`INSERT INTO client(id,company_id,${cols.join(',')}) VALUES(?,?,${cols.map(() => '?').join(',')})`, id, c.companyId, ...vals);
+   run('DELETE FROM client_team WHERE client_id=?', id);
+   for (const r of refs) run('INSERT INTO client_team(client_id,kind,ref_id) VALUES(?,?,?)', id, f.team_type, r);
+   log(c, 'client', existing ? 'modify' : 'add', `${existing ? '修改' : '新增'}客户:${f.code}`); return {id};
   });
  },
  'client.delete'(c, b) {

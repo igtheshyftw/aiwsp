@@ -129,7 +129,14 @@ AiWSP: 🟡 items with amount, date, currency and sequential approvals exist. Mi
 
 - Columns: **Code**, **CN Name**, **EN Name**, row actions. Green **＋Add** button and ⚙ settings. The list was empty.
 
-AiWSP: ❌ no client entity. **❓ Need the Add Client form (all its fields).**
+AiWSP: ❌ no client entity.
+
+**Add Client** (`Client——Client Info`, breadcrumb Client Management › Client List › Add) is a three-step wizard, "Client Info - Step N of 3", with numbered step circles (current green, finished orange with a tick) and a striped progress bar:
+1. **Basic Info**: *Client basic Info*: Code\*, CN Name\*, EN Name\*, Telephone, Fax. *Introducer Info*: Introducer. Button: Continue.
+2. **Background Info** (heading "2:Profile"): Website, Address, Business, Note. Buttons: Back, Continue.
+3. **Service Team**: Select Type ◯ User → Participants (picker); Select Type ◉ Group → Group (picker plus a "User Group" tree of checkboxes). Buttons: Back, Save.
+
+Rebuilt in `app/pages/client.tsx` (`ClientForm`), the same form for Edit.
 
 ## Account → Company (`Company List › IMS`)
 

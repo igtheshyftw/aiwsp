@@ -263,6 +263,19 @@ try {
  detail = await mi('item.get', {id: pend});
  assert(detail.rounds[0].approvers.some(a => a.id === rep));
 
+ // ---- Client Info: three steps; code and both names are required; the service team is users or groups, never both.
+ const team = (await mi('group.save', {name: 'Management Team', members: [michelle]})).id;
+ await mi('client.save', {code: 'C001', name_cn: '客户', name_en: ''}, {ok: false});
+ const client = (await mi('client.save', {code: 'C001', name_cn: '客户一', name_en: 'Client One', phone: '021-1', fax: '021-2', introducer: 'Mr Lee',
+  website: 'example.com', address: 'Shanghai', business: 'Trading', remark: 'Note', team_type: 'group', groups: [team], users: [john]})).id;
+ let cl = await mi('client.get', {id: client});
+ assert.deepEqual([cl.fax, cl.introducer, cl.business, cl.groups.map(g => g.label), cl.users.length], ['021-2', 'Mr Lee', 'Trading', ['Management Team'], 0]);
+ await mi('client.save', {id: client, code: 'C001', name_cn: '客户一', name_en: 'Client One', team_type: 'user', users: [john]});
+ cl = await mi('client.get', {id: client});
+ assert.deepEqual([cl.team_type, cl.users.map(u => u.id), cl.groups.length], ['user', [john], 0]);
+ await mi('client.save', {code: 'C001', name_cn: 'x', name_en: 'x'}, {ok: false}); // codes are unique
+ await mi('client.save', {code: 'C002', name_cn: 'x', name_en: 'x', team_type: 'user', users: [(await sys('profile.get')).id]}, {ok: false}); // not an eligible contact
+
  // ---- Connections: both companies confirm; only designated staff are visible; finding a contact grants no eFile.
  const other = (await sys('company.save', {name_cn: '客户乙', name_en: 'Client B'})).id;
  const bob = (await sys('user.save', {companyId: other, username: 'Bob', name_en: 'Bob', password: pw, level: 3})).id;

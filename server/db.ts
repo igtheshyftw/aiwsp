@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS user_group(id TEXT PRIMARY KEY, company_id TEXT NOT N
 CREATE TABLE IF NOT EXISTS user_group_member(group_id TEXT NOT NULL REFERENCES user_group(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, PRIMARY KEY(group_id,user_id));
 CREATE TABLE IF NOT EXISTS client(
  id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES company(id), code TEXT NOT NULL DEFAULT '', name_cn TEXT NOT NULL DEFAULT '', name_en TEXT NOT NULL DEFAULT '',
- contact TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', remark TEXT NOT NULL DEFAULT '');
+ contact TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', remark TEXT NOT NULL DEFAULT '',
+ fax TEXT NOT NULL DEFAULT '', introducer TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', business TEXT NOT NULL DEFAULT '', team_type TEXT NOT NULL DEFAULT 'group');
+-- Client Info step 3: the client's service team, either users or user groups (team_type).
+CREATE TABLE IF NOT EXISTS client_team(client_id TEXT NOT NULL REFERENCES client(id) ON DELETE CASCADE, kind TEXT NOT NULL, ref_id TEXT NOT NULL, PRIMARY KEY(client_id, kind, ref_id));
 CREATE TABLE IF NOT EXISTS efile(
  id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES company(id), name TEXT NOT NULL, tag TEXT NOT NULL DEFAULT '',
  select_type TEXT NOT NULL DEFAULT 'user_and_group', highlight INTEGER NOT NULL DEFAULT 0, color TEXT NOT NULL DEFAULT '', report_name TEXT NOT NULL DEFAULT '',
@@ -102,6 +105,12 @@ INSERT OR IGNORE INTO assistant_setting(id, welcome, disclaimer, suggestions) VA
  '["What documents do you need from us for this month?","What is the status of our latest submission?","Can I speak to someone at WSP?"]');
 PRAGMA user_version=${SCHEMA_VERSION};
 `);
+
+// Columns added after schema version 2 was released: add them to existing data directories.
+for (const [table, column, def] of [['client', 'fax', `TEXT NOT NULL DEFAULT ''`], ['client', 'introducer', `TEXT NOT NULL DEFAULT ''`], ['client', 'website', `TEXT NOT NULL DEFAULT ''`],
+ ['client', 'business', `TEXT NOT NULL DEFAULT ''`], ['client', 'team_type', `TEXT NOT NULL DEFAULT 'group'`]]) {
+ if (!(sql.prepare(`PRAGMA table_info(${table})`).all() as any[]).some(c => c.name === column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
+}
 
 export type Row = Record<string, any>;
 export const all = (q: string, ...a: any[]) => sql.prepare(q).all(...a) as Row[];

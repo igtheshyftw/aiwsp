@@ -296,3 +296,41 @@ tr.item-hl td { background: #fff4c2 !important; }
 .user-group-head .btn { height: 28px; font-size: 13px; }
 .user-group .dt-top { display: none; }
 .user-group .dt-info { margin-top: 8px; font-size: 13px; }
+
+/* Client Info wizard (IMS: Client → Add, three steps) */
+.page-title { font-size: 34px; font-weight: 300; color: #555; margin: 4px 0 14px; } .page-title small { font-size: 15px; color: #888; }
+.wizard .panel-head { cursor: pointer; }
+.wz-steps { display: grid; grid-template-columns: repeat(3, 1fr); padding: 28px 40px 22px; }
+.wz-step { display: flex; align-items: center; gap: 16px; color: #999; font-size: 16px; }
+.wz-step .num { width: 44px; height: 44px; border-radius: 50%; background: #eee; display: grid; place-items: center; font-size: 18px; color: #aaa; }
+.wz-step.on { color: #333; } .wz-step.on .num { background: var(--green); color: #fff; }
+.wz-step.done { color: #555; } .wz-step.done .num { background: #e8b54d; color: #fff; } .wz-step .fa-check { color: #999; font-size: 13px; }
+.wz-bar { height: 22px; background: #f5f5f5; margin: 0 12px; }
+.wz-bar > div { height: 100%; transition: width .3s; background-color: #7dc37d; background-image: linear-gradient(45deg, rgba(255,255,255,.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.2) 50%, rgba(255,255,255,.2) 75%, transparent 75%, transparent); background-size: 40px 40px; }
+.wz-body { padding: 30px 12px 10px; }
+.wz-body h2 { font-weight: 300; font-size: 30px; margin: 10px 0 30px; }
+.wz-body h3 { font-weight: 300; font-size: 26px; margin: 20px 0 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+.wz-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 0; margin-bottom: 30px; }
+.wz-single { width: min(960px, 100%); }
+.wz-single .wz-field { margin-bottom: 20px; }
+.wz-field { display: grid; grid-template-columns: 200px 1fr; align-items: start; gap: 22px; }
+.wz-field > label:first-child { text-align: right; font-size: 16px; padding-top: 9px; }
+.wz-field .req::before { content: "*"; color: #d9432f; }
+.wz-field input[type=text], .wz-field textarea { width: 100%; height: 40px; border: 1px solid #ddd; padding: 6px 10px; font: inherit; }
+.wz-field textarea { height: auto; min-height: 76px; resize: vertical; }
+.wz-field .radio { display: flex; align-items: center; gap: 12px; font-size: 16px; padding-top: 8px; }
+.wz-field .picked { display: flex; align-items: flex-start; gap: 10px; }
+.wz-field .picked .box { flex: 1; min-height: 52px; background: #eee; border: 1px solid #ccc; padding: 6px 8px; color: #d9432f; cursor: pointer; white-space: pre-wrap; }
+.wz-field .picked .box.off { cursor: default; opacity: .6; }
+.wz-field .clear { border: 0; background: none; color: #d9432f; font-size: 20px; padding: 12px 0 0; }
+.wz-field .tree label { display: flex; align-items: center; gap: 4px; font-size: 15px; margin: 6px 0 0; }
+.wz-field .tree .leaf { margin-left: 18px; } .wz-field .tree .twisty { border: 0; background: none; padding: 0; font-size: 15px; }
+.wz-single .hint { color: var(--muted); font-size: 13px; margin-left: 222px; }
+.wz-foot { background: #f5f5f5; border-top: 1px solid #eee; padding: 22px 0 22px 222px; display: flex; gap: 6px; }
+.wz-foot .btn { height: 38px; font-size: 15px; }
+@media (max-width: 900px) {
+ .wz-steps { padding: 18px 10px; gap: 6px; } .wz-step { flex-direction: column; gap: 6px; font-size: 13px; text-align: center; }
+ .wz-grid { grid-template-columns: 1fr; gap: 14px; } .wz-grid > span:empty { display: none; }
+ .wz-field { grid-template-columns: 1fr; gap: 6px; } .wz-field > label:first-child { text-align: left; padding-top: 0; }
+ .wz-single .hint { margin-left: 0; } .wz-foot { padding-left: 12px; }
+}
