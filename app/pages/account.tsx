@@ -83,13 +83,13 @@ export function CompanyForm({id}: {id?: string}) {
 // ---------------- User
 export function UserList({me, companyId}: {me: Me, companyId?: string}) {
  const [state, setState] = useState('');
- const {data, error, reload} = useLoad(() => api('user.list', {companyId, state}), [companyId, state]);
- const [sel, setSel] = useState<string[]>([]);
- const cid = data?.company?.id;
- const pickUser = async (title: string) => (await pickBox({title, single: true, companyId: cid, ownOnly: true}))?.users[0];
- const run = async (fn: () => Promise<any>, msg: string) => { try { const r = await fn(); toast(typeof msg === 'function' ? (msg as any)(r) : msg); reload(); } catch (e) { toastError(e); } };
+ const [search, setSearch] = useState('');
+ const [closed, setClosed] = useState<string[]>([]);
+ const {data, error, reload} = useLoad(() => api('user.all', {state}), [state]);
+ const pickUser = async (title: string, cid: string) => (await pickBox({title, single: true, companyId: cid, ownOnly: true}))?.users[0];
+ const run = async (fn: () => Promise<any>, msg: string) => { try { await fn(); toast(msg); reload(); } catch (e) { toastError(e); } };
  const transfer = (kind: string, title: string, needsTarget = true) => async (u: any) => {
-  const to = needsTarget ? await pickUser(`${title}: choose the receiving user`) : null;
+  const to = needsTarget ? await pickUser(`${title}: choose the receiving user`, u.company_id) : null;
   if (needsTarget && !to) return;
   if (!await confirmBox(`${title}: ${u.username}${to ? ' → ' + to.label : ''}?`)) return;
   run(() => api('user.transfer', {id: u.id, to: to?.id, kind}), `${title} done.`);
@@ -107,43 +107,67 @@ export function UserList({me, companyId}: {me: Me, companyId?: string}) {
   } catch (e) { toastError(e); }
  };
  const soon = (what: string) => () => toast(`${what} is not available in this version.`);
+ const menu = (u: any): MenuItem[] => [
+  {icon: 'fa-edit', label: 'Edit', onClick: () => go(`/account/user/${u.id}`), disabled: u.id === me.id},
+  {icon: 'fa-list', label: 'eFile List', onClick: () => go(`/account/user/${u.id}/efiles`)},
+  {icon: 'fa-cog', label: 'eFile Participants Transfer', onClick: () => transfer('participants', 'eFile Participants Transfer')(u)},
+  {icon: 'fa-cog', label: 'eFile Admin Transfer', onClick: () => transfer('admins', 'eFile Admin Transfer')(u)},
+  {icon: 'fa-cog', label: 'efile Process User Transfer', onClick: () => transfer('process', 'efile Process User Transfer')(u)},
+  {icon: 'fa-exchange', label: 'Service Team Transfer', onClick: soon('Service Team')},
+  {icon: 'fa-sign-in', label: 'Group Delete', onClick: () => transfer('groupDelete', 'Remove from all groups', false)(u)},
+  {icon: 'fa-files-o', label: 'eFile Copy', onClick: () => transfer('copy', 'eFile Copy')(u)},
+  {icon: 'fa-share-square-o', label: 'Service Team Copy', onClick: soon('Service Team')},
+  {icon: 'fa-arrow-circle-right', label: 'qChat Transfer', onClick: soon('qChat')},
+  {icon: 'fa-scissors', label: 'qChat Delete', onClick: soon('qChat')},
+  {icon: 'fa-files-o', label: 'Assign eFile Link', onClick: () => assignLinks(u)},
+  {icon: 'fa-key', label: 'Reset Password', onClick: () => reset(u)},
+  ...(u.mfa ? [{icon: 'fa-mobile', label: 'Reset Authenticator', onClick: async () => { if (await confirmBox(`Reset ${u.username}'s authenticator? They must enrol again at next sign-in.`)) run(() => api('user.mfa.reset', {id: u.id}), 'Authenticator reset.'); }}] as MenuItem[] : []),
+  {icon: 'fa-times', label: u.state === 'normal' ? 'Invalid' : 'Restore', onClick: () => invalid(u), disabled: u.id === me.id},
+  {icon: 'fa-eye-slash', label: 'Replace', onClick: () => transfer('replace', 'Replace (hands everything over, then sets invalid)')(u)},
+  {icon: 'fa-wrench', label: 'Insert', onClick: () => transfer('insert', 'Insert (add the chosen user wherever this user is)')(u)},
+ ];
+ const readOnly: MenuItem[] = [{icon: 'fa-lock', label: 'View only — this company has not authorised WSP to manage its users', disabled: true}];
+ const needle = search.trim().toLowerCase();
+ const matches = (u: any) => !needle || [u.username, u.name_cn, u.name_en, u.dept, u.email, u.mobile, u.role_label].join(' ').toLowerCase().includes(needle);
+ const groups = (data?.groups ?? []).filter((g: any) => !companyId || g.company.id === companyId).map((g: any) => ({...g, shown: g.users.filter(matches)}));
+ const total = groups.reduce((n: number, g: any) => n + g.shown.length, 0);
+ const toggle = (id: string) => setClosed(closed.includes(id) ? closed.filter(x => x !== id) : [...closed, id]);
  return <>
   <Breadcrumb items={acct('User Management')}/>
-  <Panel title={<>User List › {data?.company?.name_cn ?? ''}</>} tools={data?.can_manage && <ToolMenu icon="fa-cog" title="Actions" className="boxed" items={[
-   {icon: 'fa-plus', label: 'Add User', onClick: () => go(`/account/user/new${q(cid)}`)},
-   {icon: 'fa-qrcode', label: 'Registration QR Code', onClick: () => go(`/account/invite${q(cid)}`)},
-  ]}/>}>
-   <div className="state-filter"><label>State:</label><select value={state} onChange={e => setState(e.target.value)}><option value="">All</option><option value="normal">Normal</option><option value="invalid">Invalid</option></select></div>
-   {data ? <DataTable rows={data.users} selectable selected={sel} onSelect={setSel} rowClass={(u: any) => u.live ? '' : 'muted'}
-    columns={[
-     {key: 'username', title: 'Name', sort: (r: any) => r.username.toLowerCase()},
-     {key: 'name_cn', title: 'CN Name', sort: (r: any) => r.name_cn},
-     {key: 'name_en', title: 'EN Name', sort: (r: any) => r.name_en},
-     {key: 'sex', title: 'Sex', sort: (r: any) => r.sex},
-     {key: 'dept', title: 'Dept/Position', sort: (r: any) => r.dept},
-     {key: 'email', title: 'Email', sort: (r: any) => r.email},
-     {key: 'mobile', title: 'Mobile (WeCom)', sort: (r: any) => r.mobile},
-     {key: 'role_label', title: 'Role', sort: (r: any) => r.role_label, render: (r: any) => <>{r.role_label}{!r.live && <span className="special">({r.state === 'invalid' ? 'Invalid' : 'Expired'})</span>}{['system', 'chief', 'useradmin'].includes(r.position) && !r.mfa && <span className="ext">No authenticator</span>}</>},
-    ]}
-    menu={(u: any) => [
-     {icon: 'fa-edit', label: 'Edit', onClick: () => go(`/account/user/${u.id}`), disabled: u.id === me.id},
-     {icon: 'fa-list', label: 'eFile List', onClick: () => go(`/account/user/${u.id}/efiles`)},
-     {icon: 'fa-cog', label: 'eFile Participants Transfer', onClick: () => transfer('participants', 'eFile Participants Transfer')(u)},
-     {icon: 'fa-cog', label: 'eFile Admin Transfer', onClick: () => transfer('admins', 'eFile Admin Transfer')(u)},
-     {icon: 'fa-cog', label: 'efile Process User Transfer', onClick: () => transfer('process', 'efile Process User Transfer')(u)},
-     {icon: 'fa-exchange', label: 'Service Team Transfer', onClick: soon('Service Team')},
-     {icon: 'fa-sign-in', label: 'Group Delete', onClick: () => transfer('groupDelete', 'Remove from all groups', false)(u)},
-     {icon: 'fa-files-o', label: 'eFile Copy', onClick: () => transfer('copy', 'eFile Copy')(u)},
-     {icon: 'fa-share-square-o', label: 'Service Team Copy', onClick: soon('Service Team')},
-     {icon: 'fa-arrow-circle-right', label: 'qChat Transfer', onClick: soon('qChat')},
-     {icon: 'fa-scissors', label: 'qChat Delete', onClick: soon('qChat')},
-     {icon: 'fa-files-o', label: 'Assign eFile Link', onClick: () => assignLinks(u)},
-     {icon: 'fa-key', label: 'Reset Password', onClick: () => reset(u)},
-     ...(u.mfa ? [{icon: 'fa-mobile', label: 'Reset Authenticator', onClick: async () => { if (await confirmBox(`Reset ${u.username}'s authenticator? They must enrol again at next sign-in.`)) run(() => api('user.mfa.reset', {id: u.id}), 'Authenticator reset.'); }}] as MenuItem[] : []),
-     {icon: 'fa-times', label: u.state === 'normal' ? 'Invalid' : 'Restore', onClick: () => invalid(u), disabled: u.id === me.id},
-     {icon: 'fa-eye-slash', label: 'Replace', onClick: () => transfer('replace', 'Replace (hands everything over, then sets invalid)')(u)},
-     {icon: 'fa-wrench', label: 'Insert', onClick: () => transfer('insert', 'Insert (add the chosen user wherever this user is)')(u)},
-    ]}/> : <Loading error={error}/>}
+  <Panel title={<>User List{companyId && groups[0] ? <> › {groups[0].company.name_cn}</> : <> › All Companies</>}</>} tools={groups.length > 1 && <>
+   <button className="tool" title="Expand all" onClick={() => setClosed([])}><i className="fa fa-plus-square-o"/></button>
+   <button className="tool" title="Collapse all" onClick={() => setClosed(groups.map((g: any) => g.company.id))}><i className="fa fa-minus-square-o"/></button></>}>
+   <div className="filters" style={{margin: '4px 0 12px'}}>
+    <label>State: <select value={state} onChange={e => setState(e.target.value)} style={{height: 31, border: '1px solid #ccc', minWidth: 140}}><option value="">All</option><option value="normal">Normal</option><option value="invalid">Invalid</option></select></label>
+    <label>Search: <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, email, department…"/></label>
+    {companyId && <a className="link" href="#/account/user">Show all companies</a>}
+    <span className="muted">{total} account{total === 1 ? '' : 's'} in {groups.length} compan{groups.length === 1 ? 'y' : 'ies'}</span>
+   </div>
+   {!data ? <Loading error={error}/> : groups.map((g: any) => <div className="user-group" key={g.company.id}>
+    <div className="user-group-head" role="button" tabIndex={0} onClick={() => toggle(g.company.id)} onKeyDown={e => { if (e.key === 'Enter') toggle(g.company.id); }}>
+     <i className={'fa ' + (closed.includes(g.company.id) ? 'fa-caret-right' : 'fa-caret-down')}/>
+     <b>{g.company.name_cn}</b>{g.company.name_en && g.company.name_en !== g.company.name_cn && <span>{g.company.name_en}</span>}
+     {g.company.code && <span className="muted">{g.company.code}</span>}
+     {g.company.operator && <span className="ext">Operator</span>}{g.company.status !== 'normal' && <span className="special">(Suspended)</span>}
+     <span className="muted">· {g.shown.length} user{g.shown.length === 1 ? '' : 's'}{g.company.chief && ` · Chief Admin: ${g.company.chief}`}</span>
+     {!g.can_manage && <span className="ext">View only</span>}
+     {g.can_manage && <span className="tools" onClick={e => e.stopPropagation()}>
+      <button className="btn green" onClick={() => go(`/account/user/new${q(g.company.id)}`)}><i className="fa fa-plus"/> Add User</button>
+      <button className="btn plain" onClick={() => go(`/account/invite${q(g.company.id)}`)}><i className="fa fa-qrcode"/> QR Code</button></span>}
+    </div>
+    {!closed.includes(g.company.id) && <DataTable rows={g.shown} search={false} pageSize={50} rowClass={(u: any) => u.live ? '' : 'muted'} emptyText={needle ? 'No matching users.' : 'No users yet.'}
+     columns={[
+      {key: 'username', title: 'Name', sort: (r: any) => r.username.toLowerCase()},
+      {key: 'name_cn', title: 'CN Name', sort: (r: any) => r.name_cn},
+      {key: 'name_en', title: 'EN Name', sort: (r: any) => r.name_en},
+      {key: 'sex', title: 'Sex', sort: (r: any) => r.sex},
+      {key: 'dept', title: 'Dept/Position', sort: (r: any) => r.dept},
+      {key: 'email', title: 'Email', sort: (r: any) => r.email},
+      {key: 'mobile', title: 'Mobile (WeCom)', sort: (r: any) => r.mobile},
+      {key: 'role_label', title: 'Role', sort: (r: any) => r.role_label, render: (r: any) => <>{r.role_label}{!r.live && <span className="special">({r.state === 'invalid' ? 'Invalid' : 'Expired'})</span>}{['system', 'chief', 'useradmin'].includes(r.position) && !r.mfa && <span className="ext">No authenticator</span>}</>},
+     ]}
+     menu={(u: any) => g.can_manage ? menu(u) : readOnly}/>}
+   </div>)}
   </Panel>
  </>;
 }

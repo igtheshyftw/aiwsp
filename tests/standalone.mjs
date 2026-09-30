@@ -102,6 +102,9 @@ try {
  // Chief Admin decides whether System Admins manage the company's users.
  await mi('company.save', {id: lsk, name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', sys_manage_users: false, sys_manage_connections: false});
  await sys('user.list', {companyId: lsk}, {ok: false});
+ // The user list still shows every account, grouped by company, but read-only where WSP may not manage.
+ const everyone = await sys('user.all', {});
+ assert.deepEqual(everyone.groups.map(g => [g.company.name_en, g.can_manage, g.users.length]), [['WSP', true, 2], ['LSK & Partners Limited', false, 1]]);
  await mi('company.save', {id: lsk, name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', sys_manage_users: true, sys_manage_connections: false});
  assert.equal((await sys('user.list', {companyId: lsk})).users.length, 1);
  await mi('company.save', {id: lsk, name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', sys_manage_users: false, sys_manage_connections: false});
@@ -123,6 +126,7 @@ try {
  await session()('register.info', {token}, {ok: false});
 
  const users = await mi('user.form', {companyId: lsk});
+ assert.deepEqual((await mi('user.all', {})).groups.map(g => g.company.name_en), ['LSK & Partners Limited'], 'A Chief Admin sees only their own company');
  assert.deepEqual(users.levels.map(l => l.level), [1, 2, 3, 4]);
  const william = (await mi('user.save', {companyId: lsk, username: 'William', name_en: 'William', password: pw, level: 2, position: 'useradmin'})).id;
  const john = (await mi('user.save', {companyId: lsk, username: 'john', name_en: 'John', password: pw, level: 3})).id;

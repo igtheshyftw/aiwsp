@@ -97,6 +97,18 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
   const rows = all(`SELECT * FROM user WHERE company_id=? ${state ? 'AND state=?' : ''} ORDER BY created_at`, ...(state ? [companyId, state] : [companyId]));
   return {company: get('SELECT * FROM company WHERE id=?', companyId), users: rows.map(publicUser), can_manage: managesUsers(c, companyId), can_invite: managesUsers(c, companyId)};
  },
+ // Every account, grouped by company. System Admins see all companies; other managers see the companies they manage.
+ // Seeing an account is not managing it: rows of companies this user does not manage are read-only.
+ 'user.all'(c, b) {
+  const state = ['normal', 'invalid'].includes(b.state) ? b.state : '';
+  const companies = (c.sys ? all('SELECT * FROM company ORDER BY operator DESC, name_cn') : all('SELECT * FROM company WHERE id=?', c.companyId)).filter(co => c.sys || managesUsers(c, co.id));
+  check(companies.length, 'You do not manage any users.');
+  return {groups: companies.map(co => ({
+   company: {id: co.id, name_cn: co.name_cn, name_en: co.name_en, code: co.code, status: co.status, operator: !!co.operator, chief: liveChief(co.id)?.username ?? ''},
+   can_manage: managesUsers(c, co.id),
+   users: all(`SELECT * FROM user WHERE company_id=? ${state ? 'AND state=?' : ''} ORDER BY created_at`, ...(state ? [co.id, state] : [co.id])).map(publicUser),
+  }))};
+ },
  'user.form'(c, b) {
   const companyId = companyScope(c, b.companyId, id => managesUsers(c, id));
   return {levels: all('SELECT level, name, description, perms FROM level WHERE company_id=? ORDER BY level', companyId).map(l => ({...l, perms: JSON.parse(l.perms)})),
