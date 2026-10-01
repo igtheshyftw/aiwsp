@@ -197,7 +197,7 @@ function Notices({counters, chatStaff}: {counters: {messages: number, confirm: n
   {list && <div className="backdrop" style={{background: 'transparent', placeItems: 'start end', padding: '38px 90px 0 0'}} onMouseDown={e => { if (e.target === e.currentTarget) setList(null); }}>
    <div className="dropdown notice-list" style={{position: 'static'}}>
     {list.length === 0 ? <div className="n">No messages.</div> : list.map(n =>
-     <div key={n.id} className={'n' + (n.read_at ? '' : ' unread')} onClick={() => { setList(null); if (n.efile_id) go(`/ims/efile/${n.efile_id}`); }}>{n.title}<small>{fmtTime(n.at)}</small></div>)}
+     <div key={n.id} className={'n' + (n.read_at ? '' : ' unread')} onClick={() => { setList(null); if (n.efile_id) go(n.item_id ? `/ims/efile/${n.efile_id}/item/${n.item_id}` : `/ims/efile/${n.efile_id}`); }}>{n.title}<small>{fmtTime(n.at)}</small></div>)}
    </div>
   </div>}
  </>;

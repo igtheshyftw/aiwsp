@@ -84,6 +84,9 @@ CREATE TABLE IF NOT EXISTS process_stage(
 CREATE TABLE IF NOT EXISTS process_run(
  id TEXT PRIMARY KEY, process_id TEXT NOT NULL REFERENCES process(id) ON DELETE CASCADE, origin_item_id TEXT NOT NULL REFERENCES item(id) ON DELETE CASCADE,
  stage_item_id TEXT NOT NULL REFERENCES item(id) ON DELETE CASCADE, stage INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'running', updated_at TEXT NOT NULL);
+-- Scheduled jobs (server/jobs.ts): when each last ran, and which reminders were already sent (one per key).
+CREATE TABLE IF NOT EXISTS job_state(name TEXT PRIMARY KEY, last TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS reminder(key TEXT PRIMARY KEY, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS notification(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, kind TEXT NOT NULL, title TEXT NOT NULL, efile_id TEXT, item_id TEXT, read_at TEXT, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS system_log(id TEXT PRIMARY KEY, at TEXT NOT NULL, company_id TEXT NOT NULL, user_id TEXT NOT NULL, user_label TEXT NOT NULL, module TEXT NOT NULL, function TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'Web', content TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS system_log_at ON system_log(company_id,at);

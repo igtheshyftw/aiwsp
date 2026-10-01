@@ -1,8 +1,8 @@
 // Items, their approval workflow (docs/aiwsp/urgent-functions.md "Approval"), links to other eFiles, and IMS processes.
 import {all, get, run, uid, now, tx, nextSeq, type Row} from '../db';
 import {check, fail, hashPassword, equal, live} from '../auth';
-import {type Ctx, text, required, bool, ids, cents, date, userLabel, log, notify, fmt, context, allowed} from '../ctx';
-import {efile as openEfile, role, may} from '../access';
+import {type Ctx, text, required, bool, ids, cents, date, userLabel, log, notify, fmt, context, allowed, OPEN_ITEM, today} from '../ctx';
+import {efile as openEfile, role, may, visible} from '../access';
 import {steps as efileSteps, balances, touch} from './efile';
 import {myClientIds} from './client';
 
@@ -30,14 +30,14 @@ function participants(i: Row) {
 // ---------------- Approval steps
 const currentStep = (i: Row) => get('SELECT * FROM item_step WHERE item_id=? AND round=? AND decision IS NULL ORDER BY position LIMIT 1', i.id, i.round);
 // An approver must be active, hold the approval function, still have access to the eFile, and not be the item's creator, submitter or an editor.
-function eligible(userId: string, i: Row, e: Row) {
+export function eligible(userId: string, i: Row, e: Row) {
  if (userId === i.created_by || userId === i.submitted_by || editors(i).includes(userId)) return false;
  const u = get('SELECT u.*, c.status AS company_status FROM user u JOIN company c ON c.id=u.company_id WHERE u.id=?', userId);
  if (!u || !live(u, u.company_status)) return false;
  const uc = context(u);
  return allowed(uc, 'approve') && !!role(uc, e);
 }
-function stepState(i: Row, e: Row) {
+export function stepState(i: Row, e: Row) {
  const s = i.status === 'pending' ? currentStep(i) : null;
  if (!s) return null;
  const approvers: string[] = JSON.parse(s.approvers);
@@ -60,10 +60,18 @@ function submit(c: Ctx, i: Row, e: Row, note = '') {
  notify(st.eligible, 'approval', `Approval needed (step 1: ${st.title}): ${i.name}`, e.id, i.id);
  if (st.paused) notify(adminsOf(e), 'approval', `No eligible approver for step 1 of "${i.name}". Assign one.`, e.id, i.id);
 }
-function adminsOf(e: Row) {
+export function adminsOf(e: Row) {
  const admins = all(`SELECT user_id FROM efile_member WHERE efile_id=? AND kind='admin'`, e.id).map(r => r.user_id).filter(u => live(get('SELECT * FROM user WHERE id=?', u)));
  if (admins.length) return admins;
  return all(`SELECT id FROM user WHERE (company_id=? AND position='chief') OR position='system'`, e.company_id).map(r => r.id);
+}
+
+// The people who carry an item: its creator and editors who are still active and can still open the eFile.
+export function itemPeople(i: Row, e: Row): string[] {
+ return [...new Set([i.created_by, ...editors(i)])].filter(id => {
+  const u = get('SELECT u.*, c.status AS company_status FROM user u JOIN company c ON c.id=u.company_id WHERE u.id=?', id);
+  return u && live(u, u.company_status) && !!role(context(u), e);
+ });
 }
 
 // ---------------- Links to other eFiles (IMS)
@@ -487,6 +495,13 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
   return all(`SELECT i.id, i.efile_id, i.seq, i.status, e.name AS efile_name, i.name FROM item i JOIN efile e ON e.id=i.efile_id WHERE i.status IN ('returned','draft','withdrawn') AND i.archived=0 AND (i.created_by=? OR i.submitted_by=?) ORDER BY i.updated_at DESC LIMIT 200`, c.user.id, c.user.id)
    .map(r => ({...r, name: `${r.efile_name} - ${r.name}`, status_label: STATUS_LABEL[r.status]}));
  },
+ // Deadlines: open items in my eFiles that are overdue or due within the next 7 days, earliest first.
+ 'todo.deadlines'(c) {
+  const [cond, args] = visible(c); const t = today();
+  return all(`SELECT i.id, i.efile_id, i.seq, i.name, i.status, i.target_date, e.name AS efile_name, cl.code AS client FROM item i JOIN efile e ON e.id=i.efile_id LEFT JOIN client cl ON cl.id=e.client_id
+    WHERE e.archived=0 AND ${OPEN_ITEM} AND i.target_date<>'' AND i.target_date<=? AND ${cond} ORDER BY i.target_date, i.seq LIMIT 500`, today(7), ...args)
+   .map(r => ({...r, name: `${r.efile_name} - ${r.name}`, status_label: STATUS_LABEL[r.status], overdue: r.target_date < t, days: Math.round((Date.parse(r.target_date) - Date.parse(t)) / 86400000)}));
+ },
  'todo.paused'(c) {
   const rows = all(`SELECT i.*, e.name AS efile_name FROM item i JOIN efile e ON e.id=i.efile_id WHERE i.status='pending'`);
   return rows.filter(r => { const e = get('SELECT * FROM efile WHERE id=?', r.efile_id)!; const er = role(c, e); return er === 'admin' && stepState(r, e)?.paused; })
@@ -498,7 +513,7 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
  },
  'counters'(c) {
   return {messages: get('SELECT COUNT(*) AS n FROM notification WHERE user_id=? AND read_at IS NULL', c.user.id)!.n, confirm: (itemActions['todo.confirm'](c, {}) as Row[]).length,
-   clients: myClientIds(c.user.id).length};
+   clients: myClientIds(c.user.id).length, overdue: (itemActions['todo.deadlines'](c, {}) as Row[]).filter(r => r.overdue).length};
  },
  // Notification text and links are shown only while the recipient can still open the eFile.
  'notifications'(c) {

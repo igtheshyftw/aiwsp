@@ -32,7 +32,7 @@ await new Promise(r => agent.listen(0, '127.0.0.1', r));
 const agentUrl = `http://127.0.0.1:${agent.address().port}/agent`;
 let child;
 async function start() {
- child = spawn(process.execPath, ['dist/server.mjs'], {env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: directory, ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: adminPassword, COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'true', CLAMAV_HOST: '', AGENT_URL: agentUrl, AGENT_TOKEN: 'agent-secret', AGENT_REVIEW_BELOW: '0.5'}, stdio: ['ignore', 'pipe', 'pipe']});
+ child = spawn(process.execPath, ['dist/server.mjs'], {env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: directory, ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: adminPassword, COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'true', CLAMAV_HOST: '', AGENT_URL: agentUrl, AGENT_TOKEN: 'agent-secret', AGENT_REVIEW_BELOW: '0.5', DISABLE_JOBS: '1'}, stdio: ['ignore', 'pipe', 'pipe']});
  await new Promise((resolve, reject) => {
   let logs = ''; const timer = setTimeout(() => reject(Error('Server startup timed out: ' + logs)), 15000);
   child.stderr.on('data', x => logs += x);
@@ -346,6 +346,16 @@ try {
  const view = await tm('client.view', {id: lskClient});
  assert.deepEqual(view.efiles.map(e => [e.name, e.open, e.overdue]), [['LSK Tax 2026', 1, 1]]);
  assert.equal((await tm('efile.get', {id: lskFile})).client.code, 'LSK');
+ // Deadlines: the To Do tab lists overdue and due-soon work; the daily job reminds the people carrying it, once.
+ const tomorrow = new Date(Date.now() + 86400000 + 8 * 3600000).toISOString().slice(0, 10); // Shanghai date of tomorrow
+ await tm('item.save', {efileId: lskFile, name: 'Draft return', target_date: tomorrow});
+ assert.deepEqual((await tm('todo.deadlines')).map(r => [r.name, r.overdue]), [['LSK Tax 2026 - File return', true], ['LSK Tax 2026 - Draft return', false]]);
+ assert.equal((await tm('counters')).overdue, 1);
+ await tm('jobs.run', {}, {ok: false});
+ assert((await sys('jobs.run')).sent >= 2);
+ const reminders = (await tm('notifications')).filter(n => n.kind === 'deadline').map(n => n.title);
+ assert(reminders.some(t => t.startsWith('Overdue by') && t.endsWith('File return')) && reminders.some(t => t.startsWith('Due in 1 day') && t.endsWith('Draft return')), reminders.join(' | '));
+ assert.equal((await sys('jobs.run')).sent, 0, 'Each reminder is sent once');
  // Service Team Transfer hands the user's clients to a colleague.
  assert.equal((await sys('user.transfer', {id: teamMate, kind: 'teamTransfer', to: staff})).count, 1);
  assert.deepEqual([(await tm('counters')).clients, (await st('counters')).clients], [0, 1]);

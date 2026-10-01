@@ -12,8 +12,13 @@ import {efileActions} from './actions/efile';
 import {itemActions} from './actions/item';
 import {chatActions} from './actions/chat';
 import {clientActions} from './actions/client';
+import {runDaily, jobState} from './jobs';
 
-const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions, ...clientActions};
+const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions, ...clientActions,
+ // Run today's reminders now (System Admin). They also run by themselves every morning; each reminder is sent once.
+ 'jobs.run'(c) { check(c.sys, 'Only a System Admin can run the scheduled jobs.'); return runDaily(); },
+ 'jobs.state'(c) { check(c.sys); return jobState(); },
+};
 
 const json = (data: any, status = 200, headers: Record<string, string> = {}) =>
  Response.json(data, {status, headers: {'Cache-Control': 'no-store', ...headers}});

@@ -341,3 +341,5 @@ tr.item-hl td { background: #fff4c2 !important; }
 .cv-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 7px 4px; border-bottom: 1px solid #f0f0f0; }
 .cv-row > span { color: var(--muted); }
 @media (max-width: 900px) { .cv-grid { grid-template-columns: 1fr; } .cv-row { grid-template-columns: 110px 1fr; } }
+.tab-count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--red); color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
+tr.overdue td:first-child { border-left: 3px solid var(--red); }
