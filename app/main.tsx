@@ -14,12 +14,14 @@ import {SetProcess} from './pages/process';
 import {CompanyList, CompanyForm, UserList, UserForm, UserEfiles, RoleList, RoleForm, RoleUsers, GroupList, GroupForm, GroupUsers, GroupEfiles, SystemLog, Profile, Connections, Invitations} from './pages/account';
 import {ClientList, ClientForm, ClientView} from './pages/client';
 import {Reports} from './pages/report';
+import {Search} from './pages/search';
 import {AssistantChat, AssistantInbox, AssistantSettings} from './pages/assistant';
 
 function Router({me, setMe}: {me: Me, setMe: (m: Me) => void}) {
  const {parts, query} = useRoute();
  const [a, b, c, d, e, f] = parts;
  if (!a) return <Home/>;
+ if (a === 'search') return <Search q={query.q ?? ''}/>;
  if (a === 'profile') return <Profile me={me} changePassword={!!query.password}/>;
  if (a === 'mfa') return <MfaSetup me={me} onDone={setMe}/>;
  if (a === 'assistant') return b === 'inbox' ? <AssistantInbox id={c}/> : b === 'settings' ? <AssistantSettings/> : <AssistantChat id={b}/>;

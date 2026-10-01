@@ -151,6 +151,7 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
   <header className="topbar">
    <a className="logo" href={href('/')} aria-label="IMS home"><b>IMS<small>eFile</small></b></a>
    <span className="spacer"/>
+   <TopSearch/>
    <Notices counters={counters} chatStaff={me.chat_staff}/>
    <Menu items={[
     {icon: 'fa-user', label: 'My Profile', onClick: () => go('/profile')},
@@ -184,6 +185,13 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
    <footer className="footer"><span>2015 © IMS</span><button className="up" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} aria-label="Back to top"><i className="fa fa-angle-up"/></button></footer>
   </div>
  </>;
+}
+
+function TopSearch() {
+ const [q, setQ] = useState('');
+ return <form className="top-search" role="search" onSubmit={e => { e.preventDefault(); if (q.trim()) { go(`/search?q=${encodeURIComponent(q.trim())}`); setQ(''); } }}>
+  <i className="fa fa-search"/><input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search eFiles and items" aria-label="Search eFiles and items"/>
+ </form>;
 }
 
 function Notices({counters, chatStaff}: {counters: {messages: number, confirm: number, chat: number, clients: number}, chatStaff: boolean}) {

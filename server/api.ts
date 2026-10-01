@@ -13,10 +13,11 @@ import {itemActions} from './actions/item';
 import {chatActions} from './actions/chat';
 import {clientActions} from './actions/client';
 import {reportActions} from './actions/report';
+import {searchActions} from './actions/search';
 import {runDaily, jobState} from './jobs';
 import {deliver, outboxStatus, channelsFor, wecomReady, emailReady, CHANNELS} from './outbox';
 
-const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions, ...clientActions, ...reportActions,
+const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions, ...clientActions, ...reportActions, ...searchActions,
  // Run today's reminders now (System Admin). They also run by themselves every morning; each reminder is sent once.
  'jobs.run'(c) { check(c.sys, 'Only a System Admin can run the scheduled jobs.'); return runDaily(); },
  'jobs.state'(c) { check(c.sys); return jobState(); },

@@ -347,3 +347,7 @@ tr.overdue td:first-child { border-left: 3px solid var(--red); }
 .bubble .to-item { border: 0; background: none; color: var(--panel-blue); font-size: 12px; margin-left: 8px; cursor: pointer; padding: 0; }
 .chat-items { background: #f4f7fe; border: 1px solid #dfe7fb; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .report-summary th, .report-summary td { text-align: center; } .report-summary td { font-size: 22px; padding: 12px 6px; }
+.top-search { display: flex; align-items: center; gap: 6px; margin-right: 18px; color: #aaa; }
+.top-search input { width: 220px; height: 24px; border: 1px solid #555; background: #3a3a3a; color: #eee; padding: 0 8px; font-size: 13px; }
+.top-search input:focus { outline: none; border-color: var(--panel-blue); background: #444; }
+@media (max-width: 900px) { .top-search input { width: 90px; } .top-search { margin-right: 6px; } }

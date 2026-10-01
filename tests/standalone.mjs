@@ -424,6 +424,15 @@ try {
  const madeItem = await tm('item.get', {id: made.id});
  assert.deepEqual(madeItem.conversations.map(cv => cv.id), [qOpen]);
  assert(madeItem.comments[0].body.includes('And the tax work?'));
+ // Search covers eFiles, items (name, comments, file names) and clients the user may see; nothing else.
+ const found = await tm('search', {q: 'return'});
+ assert.deepEqual(found.items.map(i => i.name).sort(), ['Draft return', 'File return']);
+ assert(found.items.every(i => i.efile === 'LSK Tax 2026'));
+ assert.equal((await tm('search', {q: 'tax work'})).items[0].matched, 'comment');
+ assert.equal((await tm('search', {q: 'LSK'})).clients[0].code, 'LSK');
+ assert.equal((await st('search', {q: 'return'})).items.length, 0, 'No access, no results');
+ assert.equal((await tm('search', {q: '%%'})).items.length, 0, 'Wildcards are taken literally');
+ await tm('search', {q: 'x'}, {ok: false});
  // Reports count only eFiles the viewer takes part in.
  const workRep = await tm('report.work', {});
  const taxRow = workRep.by_efile.find(r => r.label === 'LSK Tax 2026');
