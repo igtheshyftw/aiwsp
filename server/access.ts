@@ -2,7 +2,7 @@
 // administrator or user-management rights never grant it by themselves (docs/aiwsp/urgent-functions.md).
 import {all, get, type Row} from './db';
 import {check, fail, live} from './auth';
-import {type Ctx, text, allowed, companyAdmin} from './ctx';
+import {type Ctx, text, allowed, companyAdmin, context} from './ctx';
 
 // SQL condition (on alias e) for eFiles the user takes part in, with its parameters.
 export function visible(c: Ctx): [string, any[]] {
@@ -46,4 +46,12 @@ export function may(c: Ctx, e: Row, action: 'createItem' | 'edit' | 'download' |
  if (!e.role) return false;
  if (action === 'download' || action === 'export' || action === 'approve') return allowed(c, action);
  return ['admin', 'edit'].includes(e.role) && allowed(c, action);
+}
+
+// Who may be made responsible for an item: active users who can edit in the eFile (directly, as admin, or through a group).
+export function assignable(e: Row): Row[] {
+ const ids = all(`SELECT user_id FROM efile_member WHERE efile_id=? AND (kind='admin' OR (kind='participant' AND rights='edit'))
+  UNION SELECT m.user_id FROM efile_group eg JOIN user_group_member m ON m.group_id=eg.group_id WHERE eg.efile_id=? AND eg.kind='participant' AND eg.rights='edit'`, e.id, e.id).map(r => r.user_id);
+ return ids.map(id => get('SELECT u.*, c.status AS company_status FROM user u JOIN company c ON c.id=u.company_id WHERE u.id=?', id)!)
+  .filter(u => u && live(u, u.company_status) && ['admin', 'edit'].includes(role(context(u), e))).sort((a, z) => a.username.localeCompare(z.username));
 }

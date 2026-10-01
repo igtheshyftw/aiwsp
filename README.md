@@ -48,7 +48,8 @@ The screens copy the original IMS. How it works follows the AiWSP requirements i
   - Each client has a page with its eFiles, open and overdue items, and conversations. The purple top-bar badge lists the clients you serve.
   - Service Team Transfer/Copy hand a departing user's clients to a colleague.
 - **Deadlines:** the To Do **Deadlines** tab lists overdue items and those due within 7 days. Every morning (8:00 Shanghai time by default) the server reminds the people carrying items that are due soon or overdue (then weekly), approvers of steps waiting more than 3 days, and the administrators responsible for temporary accounts about to expire. Settings are in `.env.example`.
-- **To Do** (home) has five tabs: Confirm, Deadlines, My Items, Paused, Process Executor. Notices show in the top bar. The **System Log** records logins, views, changes, downloads, approvals and overrides.
+- **Responsible person:** each item can have one person carrying it (anyone who can edit in the eFile). They see it under To Do → **My Work** and get its reminders. Items of eFiles without approval are finished with **Mark complete** (and can be reopened); approval items finish when approved.
+- **To Do** (home) has six tabs: Confirm, My Work, Deadlines, My Items, Paused, Process Executor. Notices show in the top bar. The **System Log** records logins, views, changes, downloads, approvals and overrides.
 
 qChat, WeChat/WeCom delivery, item templates and recurring items are not built yet (the document allows WeCom and recurring items later).
 

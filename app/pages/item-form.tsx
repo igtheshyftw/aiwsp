@@ -31,7 +31,7 @@ export function ItemForm({efileId, id}: {efileId: string, id?: string}) {
   }).catch(toastError);
   else api('efile.get', {id: efileId}).then(r => {
    setEfile(r); setSteps(r.steps);
-   setF({name: '', amount: '', item_date: r.show_date ? today() : '', target_date: '', highlight: false, move_to_top: false, special_marking: false, can_submit: !!r.approval});
+   setF({name: '', amount: '', item_date: r.show_date ? today() : '', target_date: '', highlight: false, move_to_top: false, special_marking: false, can_submit: !!r.approval, responsible_id: ''});
   }).catch(toastError);
  }, [efileId, id]);
  if (!f || !efile) return <Loading/>;
@@ -110,6 +110,9 @@ export function ItemForm({efileId, id}: {efileId: string, id?: string}) {
    <div className="divider"/>
    {efile.show_date && <div className="field"><label>Item Date</label><div className="date"><input type="date" value={f.item_date} onChange={e => setF({...f, item_date: e.target.value})}/><button className="clear" onClick={() => setF({...f, item_date: ''})} aria-label="Clear Item Date"><i className="fa fa-times-circle-o"/></button></div></div>}
    <div className="field"><label>Target Date</label><div className="date"><input type="date" value={f.target_date} onChange={e => setF({...f, target_date: e.target.value})}/><button className="clear" onClick={() => setF({...f, target_date: ''})} aria-label="Clear Target Date"><i className="fa fa-times-circle-o"/></button></div></div>
+   {!id && efile.assignable?.length > 0 && <div className="field"><label htmlFor="responsible">Responsible</label><select id="responsible" value={f.responsible_id} onChange={e => setF({...f, responsible_id: e.target.value})} style={{maxWidth: 360}}>
+    <option value="">—</option>{efile.assignable.map((u: any) => <option key={u.id} value={u.id}>{u.label}</option>)}</select>
+    <div className="hint">The person carrying this item. They see it under To Do → My Work and get its deadline reminders.</div></div>}
   </FormPanel>
  </>;
 }
@@ -144,6 +147,9 @@ export function ItemView({efileId, id}: {efileId: string, id: string}) {
      {(d.efile.show_amount || i.amount !== '') && <><b>Amount</b><span>{i.amount === '' ? <span className="muted">(blank)</span> : `${i.amount} ${i.currency}`}</span></>}
      {(d.efile.show_date || i.item_date) && <><b>Item Date</b><span>{i.item_date || '—'}</span></>}
      <b>Target Date</b><span>{i.target_date || '—'}</span>
+     <b>Responsible</b><span>{i.can_assign && d.assignable.length ? <select aria-label="Responsible" value={i.responsible_id} onChange={e => call('item.assign', {id, userId: e.target.value}, 'Responsible person updated.')} style={{height: 30, minWidth: 220, width: 'auto', maxWidth: 360}}>
+      <option value="">—</option>{d.assignable.map((u: any) => <option key={u.id} value={u.id}>{u.label}</option>)}</select> : i.responsible || '—'}</span>
+     {i.completed && <><b>Completed</b><span>{i.completed.by}, {fmtTime(i.completed.at)}</span></>}
      <b>Status</b><span>{d.efile.approval || i.status !== 'none' ? <Status i={i}/> : 'No approval required'}{i.step && ` · step ${i.step.position} of ${i.step.total}: ${i.step.title}`}{i.stage ? ` · process stage ${i.stage}` : ''}{i.locked ? ' · locked' : ''}{i.archived ? ' · archived' : ''}</span>
      <b>Flags</b><span>{[i.highlight && 'Highlight', i.move_to_top && 'Move to Top', i.special_marking && 'Special Marking'].filter(Boolean).join(', ') || '—'}</span>
      <b>Created</b><span>{i.created_by}, {fmtTime(i.created_at)}</span>
@@ -153,6 +159,8 @@ export function ItemView({efileId, id}: {efileId: string, id: string}) {
      {i.can_edit && <a className="btn blue" href={href(`/ims/efile/${efileId}/item/${id}/edit`)}><i className="fa fa-edit"/> {i.status === 'returned' ? 'Correct' : 'Edit'}</a>}
      {actions.map((a, n) => <button key={n} className={'btn ' + (n === 0 ? 'green' : 'grey')} onClick={a.onClick}>{a.icon && <i className={'fa ' + a.icon}/>} {a.label}</button>)}
      {i.can_commit && <button className="btn blue" onClick={async () => { if (await confirmBox('Commit this item to the next eFile in the process?')) call('process.commit', {id}, 'Committed.'); }}><i className="fa fa-share"/> Commit to next eFile</button>}
+     {i.can_complete && <button className="btn green" onClick={() => call('item.complete', {id}, 'Completed.')}><i className="fa fa-check-square-o"/> Mark complete</button>}
+     {i.can_reopen && <button className="btn grey" onClick={() => call('item.complete', {id, reopen: true}, 'Reopened.')}><i className="fa fa-undo"/> Reopen</button>}
      {i.can_lock && <button className="btn grey" onClick={() => call('item.lock', {id}, i.locked ? 'Unlocked.' : 'Locked.')}><i className={'fa ' + (i.locked ? 'fa-unlock' : 'fa-lock')}/> {i.locked ? 'Unlock' : 'Lock'}</button>}
      {(i.can_archive || i.archived) && <button className="btn grey" onClick={() => call('item.archive', {id}, 'Done.')}><i className="fa fa-archive"/> {i.archived ? 'Restore' : 'Archive'}</button>}
      {d.can_override && i.status === 'pending' && <button className="btn red" onClick={() => override('approve')}><i className="fa fa-gavel"/> Override: approve</button>}

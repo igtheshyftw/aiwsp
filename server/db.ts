@@ -113,7 +113,8 @@ PRAGMA user_version=${SCHEMA_VERSION};
 // Columns added after schema version 2 was released: add them to existing data directories.
 for (const [table, column, def] of [['client', 'fax', `TEXT NOT NULL DEFAULT ''`], ['client', 'introducer', `TEXT NOT NULL DEFAULT ''`], ['client', 'website', `TEXT NOT NULL DEFAULT ''`],
  ['client', 'business', `TEXT NOT NULL DEFAULT ''`], ['client', 'team_type', `TEXT NOT NULL DEFAULT 'group'`],
- ['client', 'account_company_id', 'TEXT REFERENCES company(id)'], ['efile', 'client_id', 'TEXT REFERENCES client(id) ON DELETE SET NULL']]) {
+ ['client', 'account_company_id', 'TEXT REFERENCES company(id)'], ['efile', 'client_id', 'TEXT REFERENCES client(id) ON DELETE SET NULL'],
+ ['item', 'responsible_id', 'TEXT'], ['item', 'completed_by', 'TEXT'], ['item', 'completed_at', 'TEXT']]) {
  if (!(sql.prepare(`PRAGMA table_info(${table})`).all() as any[]).some(c => c.name === column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
 }
 

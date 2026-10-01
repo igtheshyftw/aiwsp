@@ -2,7 +2,7 @@
 import {all, get, run, uid, now, tx, nextSeq, type Row} from '../db';
 import {check, fail, hashPassword, equal, live} from '../auth';
 import {type Ctx, text, required, bool, ids, cents, date, userLabel, log, notify, fmt, context, allowed, OPEN_ITEM, today} from '../ctx';
-import {efile as openEfile, role, may, visible} from '../access';
+import {efile as openEfile, role, may, visible, assignable} from '../access';
 import {steps as efileSteps, balances, touch} from './efile';
 import {myClientIds} from './client';
 
@@ -66,13 +66,16 @@ export function adminsOf(e: Row) {
  return all(`SELECT id FROM user WHERE (company_id=? AND position='chief') OR position='system'`, e.company_id).map(r => r.id);
 }
 
-// The people who carry an item: its creator and editors who are still active and can still open the eFile.
+// The people who carry an item: its responsible person, or else its creator and editors; only those still active who can still open the eFile.
 export function itemPeople(i: Row, e: Row): string[] {
- return [...new Set([i.created_by, ...editors(i)])].filter(id => {
+ const active = (ids: string[]) => ids.filter(id => {
   const u = get('SELECT u.*, c.status AS company_status FROM user u JOIN company c ON c.id=u.company_id WHERE u.id=?', id);
   return u && live(u, u.company_status) && !!role(context(u), e);
  });
+ const responsible = i.responsible_id ? active([i.responsible_id]) : [];
+ return responsible.length ? responsible : active([...new Set([i.created_by, ...editors(i)])]);
 }
+function checkAssignable(e: Row, userId: string) { check(assignable(e).some(u => u.id === userId), 'The responsible person must be an active user who can edit in this eFile.'); }
 
 // ---------------- Links to other eFiles (IMS)
 function mirrorAmount(item: Row, l: Row) { const base = l.kind === 'split_link' ? l.split_amount : item.amount; return base === null ? null : l.change_sign ? -base : base; }
@@ -152,7 +155,7 @@ function itemRow(c: Ctx, i: Row, e: Row) {
  const canEdit = EDITABLE.includes(i.status) && !i.locked && !i.archived && !i.done && may(c, e, 'edit') && !MIRROR_KINDS.includes(i.source_kind) && !i.shared_in;
  return {
   id: i.id, seq: i.seq, efile_id: i.efile_id, name: i.name, amount: fmt(i.amount), currency: i.currency, item_date: i.item_date, target_date: i.target_date,
-  highlight: !!i.highlight, move_to_top: !!i.move_to_top, special_marking: !!i.special_marking, status: i.status, status_label: STATUS_LABEL[i.status],
+  highlight: !!i.highlight, move_to_top: !!i.move_to_top, special_marking: !!i.special_marking, status: i.status, status_label: i.completed_at ? 'Completed' : STATUS_LABEL[i.status],
   locked: !!i.locked, archived: !!i.archived, done: !!i.done, version: i.version,
   starred: !!get('SELECT 1 FROM item_star WHERE user_id=? AND item_id=?', c.user.id, i.id),
   step: st ? {position: st.position, total, title: st.title, paused: st.paused} : null,
@@ -162,6 +165,11 @@ function itemRow(c: Ctx, i: Row, e: Row) {
   comments: get('SELECT COUNT(*) AS n FROM item_comment WHERE item_id=?', i.id)!.n,
   attachments: get('SELECT COUNT(*) AS n FROM item_attachment WHERE item_id=?', i.id)!.n,
   can_edit: canEdit,
+  responsible_id: i.responsible_id ?? '', responsible: who(i.responsible_id),
+  completed: i.completed_at ? {by: who(i.completed_by), at: i.completed_at} : null,
+  can_assign: i.archived === 0 && !i.done && !['approved', 'rejected'].includes(i.status) && may(c, e, 'edit'),
+  can_complete: i.status === 'none' && !i.done && !i.archived && !r && may(c, e, 'edit'),
+  can_reopen: !!i.done && !!i.completed_at && !i.archived && may(c, e, 'edit'),
   can_submit: e.approval && ['draft', 'returned', 'withdrawn'].includes(i.status) && !i.archived && may(c, e, 'submit') && !i.shared_in,
   can_decide: !!st && st.approvers.includes(c.user.id) && eligible(c.user.id, i, e),
   can_withdraw: i.status === 'pending' && (i.submitted_by === c.user.id || i.created_by === c.user.id),
@@ -228,6 +236,7 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
    comments: all('SELECT c.*, u.username FROM item_comment c LEFT JOIN user u ON u.id=c.user_id WHERE c.item_id=? ORDER BY c.at', i.id),
    attachments: all('SELECT id,filename,size,content_type,at FROM item_attachment WHERE item_id=? ORDER BY at', i.id),
    can_override: c.sys && ['pending', 'approved', 'rejected'].includes(i.status),
+   assignable: may(c, e, 'edit') ? assignable(e).map(u => ({id: u.id, label: userLabel(u)})) : [],
   };
  },
  async 'item.save'(c, b) {
@@ -256,6 +265,8 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
   });
   const splits = links.filter((l: Row) => l.kind === 'split_link');
   if (splits.length) check(f.amount !== null && splits.reduce((s: number, l: Row) => s + l.split_amount, 0) === f.amount, 'Split Link amounts must add up to the item amount.');
+  const responsible = !existing ? text(b.responsible_id, 64) : '';
+  if (responsible) checkAssignable(e, responsible);
   return tx(() => {
    const id = existing?.id ?? uid(), t = now();
    const eds = [...new Set([...(existing ? editors(existing) : []), c.user.id])];
@@ -263,6 +274,10 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
     f.name, f.amount, f.item_date, f.target_date, f.highlight, f.move_to_top, f.special_marking, '[]', JSON.stringify(eds), t, id);
    else run('INSERT INTO item(id,seq,efile_id,name,amount,currency,item_date,target_date,highlight,move_to_top,special_marking,status,steps,editors,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     id, nextSeq(), e.id, f.name, f.amount, e.currency, f.item_date, f.target_date, f.highlight, f.move_to_top, f.special_marking, e.approval ? 'draft' : 'none', '[]', JSON.stringify(eds), c.user.id, t, t);
+   if (responsible) {
+    run('UPDATE item SET responsible_id=? WHERE id=?', responsible, id);
+    if (responsible !== c.user.id) notify([responsible], 'assigned', `You are responsible for: ${e.name} - ${f.name.slice(0, 120)}${f.target_date ? ` (target ${f.target_date})` : ''}`, e.id, id);
+   }
    // Links: keep rows (and their generated items) that are unchanged, replace the rest.
    const old = all('SELECT * FROM item_link WHERE item_id=?', id);
    const same = (a: Row, z: Row) => a.kind === z.kind && a.target_efile_id === z.target_efile_id && a.step_efile_id === z.step_efile_id && (a.kind !== 'bind' || a.target_item_id === z.target_item_id);
@@ -373,6 +388,36 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
    log(c, 'approval', 'override', `管理员覆盖(${action}):${e.name} - #${i.seq} ${i.name.slice(0, 60)} — ${note}`, e.company_id);
    if (action === 'approve') { const r = runFor(i.id); if (r) autoCommit(c, r); }
    return {};
+  });
+ },
+ // Responsible person: who carries the item now. Reminders go to them; they see it under To Do → My Work.
+ 'item.assign'(c, b) {
+  const i = getItem(b.id); const e = openEfile(c, i.efile_id, 'edit');
+  check(!i.archived && !i.done && !['approved', 'rejected'].includes(i.status), 'This item is finished.');
+  const to = text(b.userId, 64) || null; if (to) checkAssignable(e, to);
+  if (to === (i.responsible_id ?? null)) return {};
+  return tx(() => {
+   run('UPDATE item SET responsible_id=?, updated_at=? WHERE id=?', to, now(), i.id);
+   event(i, c, to ? `Responsible: ${who(to)}` : 'Responsible person removed');
+   if (to && to !== c.user.id) notify([to], 'assigned', `You are responsible for: ${e.name} - ${i.name}${i.target_date ? ` (target ${i.target_date})` : ''}`, e.id, i.id);
+   log(c, 'item', 'modify', `指定负责人 Item:#${i.seq} → ${to ? who(to) : '—'}`, e.company_id); touch(e.id); return {};
+  });
+ },
+ // Items of eFiles without approval are finished by marking them complete (approval eFiles finish when approved).
+ 'item.complete'(c, b) {
+  const i = getItem(b.id); const e = openEfile(c, i.efile_id, 'edit');
+  check(may(c, e, 'edit'), 'Your access to this eFile is view only.');
+  if (b.reopen) {
+   check(i.done && i.completed_at && !i.archived, 'This item is not completed.');
+   return tx(() => { run('UPDATE item SET done=0, completed_by=NULL, completed_at=NULL, updated_at=? WHERE id=?', now(), i.id); event(i, c, 'Reopened'); log(c, 'item', 'modify', `重新打开 Item:#${i.seq}`, e.company_id); touch(e.id); return {}; });
+  }
+  check(i.status === 'none' && !i.done && !i.archived, i.status === 'none' ? 'This item is already finished.' : 'Items that need approval are finished by approval.');
+  check(!runFor(i.id), 'This item is in a process. The executor commits it instead.');
+  return tx(() => {
+   run('UPDATE item SET done=1, completed_by=?, completed_at=?, updated_at=? WHERE id=?', c.user.id, now(), now(), i.id);
+   event(i, c, 'Completed');
+   const others = itemPeople(i, e).filter(u => u !== c.user.id); if (others.length) notify(others, 'assigned', `Completed by ${userLabel(c.user)}: ${e.name} - ${i.name}`, e.id, i.id);
+   log(c, 'item', 'modify', `完成 Item:#${i.seq}`, e.company_id); touch(e.id); return {};
   });
  },
  'item.lock'(c, b) {
@@ -495,12 +540,20 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
   return all(`SELECT i.id, i.efile_id, i.seq, i.status, e.name AS efile_name, i.name FROM item i JOIN efile e ON e.id=i.efile_id WHERE i.status IN ('returned','draft','withdrawn') AND i.archived=0 AND (i.created_by=? OR i.submitted_by=?) ORDER BY i.updated_at DESC LIMIT 200`, c.user.id, c.user.id)
    .map(r => ({...r, name: `${r.efile_name} - ${r.name}`, status_label: STATUS_LABEL[r.status]}));
  },
+ // My Work: open items I am responsible for, earliest target date first.
+ 'todo.mywork'(c) {
+  const [cond, args] = visible(c); const t = today();
+  return all(`SELECT i.id, i.efile_id, i.seq, i.name, i.status, i.target_date, e.name AS efile_name, cl.code AS client FROM item i JOIN efile e ON e.id=i.efile_id LEFT JOIN client cl ON cl.id=e.client_id
+    WHERE e.archived=0 AND ${OPEN_ITEM} AND i.responsible_id=? AND ${cond} ORDER BY i.target_date='', i.target_date, i.seq LIMIT 500`, c.user.id, ...args)
+   .map(r => ({...r, name: `${r.efile_name} - ${r.name}`, status_label: STATUS_LABEL[r.status], overdue: !!r.target_date && r.target_date < t,
+    days: r.target_date ? Math.round((Date.parse(r.target_date) - Date.parse(t)) / 86400000) : null}));
+ },
  // Deadlines: open items in my eFiles that are overdue or due within the next 7 days, earliest first.
  'todo.deadlines'(c) {
   const [cond, args] = visible(c); const t = today();
-  return all(`SELECT i.id, i.efile_id, i.seq, i.name, i.status, i.target_date, e.name AS efile_name, cl.code AS client FROM item i JOIN efile e ON e.id=i.efile_id LEFT JOIN client cl ON cl.id=e.client_id
+  return all(`SELECT i.id, i.efile_id, i.seq, i.name, i.status, i.target_date, i.responsible_id, e.name AS efile_name, cl.code AS client FROM item i JOIN efile e ON e.id=i.efile_id LEFT JOIN client cl ON cl.id=e.client_id
     WHERE e.archived=0 AND ${OPEN_ITEM} AND i.target_date<>'' AND i.target_date<=? AND ${cond} ORDER BY i.target_date, i.seq LIMIT 500`, today(7), ...args)
-   .map(r => ({...r, name: `${r.efile_name} - ${r.name}`, status_label: STATUS_LABEL[r.status], overdue: r.target_date < t, days: Math.round((Date.parse(r.target_date) - Date.parse(t)) / 86400000)}));
+   .map(r => ({...r, responsible: who(r.responsible_id), name: `${r.efile_name} - ${r.name}`, status_label: STATUS_LABEL[r.status], overdue: r.target_date < t, days: Math.round((Date.parse(r.target_date) - Date.parse(t)) / 86400000)}));
  },
  'todo.paused'(c) {
   const rows = all(`SELECT i.*, e.name AS efile_name FROM item i JOIN efile e ON e.id=i.efile_id WHERE i.status='pending'`);
@@ -513,7 +566,7 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
  },
  'counters'(c) {
   return {messages: get('SELECT COUNT(*) AS n FROM notification WHERE user_id=? AND read_at IS NULL', c.user.id)!.n, confirm: (itemActions['todo.confirm'](c, {}) as Row[]).length,
-   clients: myClientIds(c.user.id).length, overdue: (itemActions['todo.deadlines'](c, {}) as Row[]).filter(r => r.overdue).length};
+   clients: myClientIds(c.user.id).length, mywork: (itemActions['todo.mywork'](c, {}) as Row[]).length, overdue: (itemActions['todo.deadlines'](c, {}) as Row[]).filter(r => r.overdue).length};
  },
  // Notification text and links are shown only while the recipient can still open the eFile.
  'notifications'(c) {

@@ -2,7 +2,7 @@
 import {all, get, run, uid, now, tx, type Row} from '../db';
 import {check, hashPassword, validPassword, equal} from '../auth';
 import {type Ctx, needPerm, text, required, bool, ids, cents, userLabel, log, fmt, eligibleContact, userPerms, notify, companyAdmin} from '../ctx';
-import {visible, efile as openEfile, liveAdmins} from '../access';
+import {visible, efile as openEfile, liveAdmins, may, assignable} from '../access';
 
 export const COLORS = ['', 'Blue', 'Teal', 'Green', 'Yellow', 'Orange', 'Red', 'Purple', 'Grey', 'Personalised 1', 'Personalised 2', 'Personalised 3', 'Personalised 4', 'Personalised 5'];
 // Standard ISO 4217 codes offered for amounts.
@@ -74,7 +74,7 @@ export const efileActions: Record<string, (c: Ctx, b: any) => any> = {
   return {...safe, locked: !!password, participants: members(e, 'participant'), admins: members(e, 'admin'), groups: groups(e.id, 'participant'),
    wechat_participants: members(e, 'wechat'), wechat_groups: groups(e.id, 'wechat'), steps: steps(e.id), colors: COLORS, currencies: CURRENCIES,
    balance_total: fmt(bal.balance), notional_total: fmt(bal.notional), balance_open: fmt(e.balance), notional_open: fmt(e.notional),
-   admin_fallback: !liveAdmins(e.id).length, client: e.client_id ? get(`SELECT id, code, name_cn FROM client WHERE id=?`, e.client_id) : null};
+   admin_fallback: !liveAdmins(e.id).length, assignable: may(c, e, 'edit') ? assignable(e).map(u => ({id: u.id, label: userLabel(u)})) : [], client: e.client_id ? get(`SELECT id, code, name_cn FROM client WHERE id=?`, e.client_id) : null};
  },
  'efile.form'() { return {colors: COLORS, currencies: CURRENCIES}; },
  'efile.save'(c, b) {

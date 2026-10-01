@@ -65,9 +65,9 @@ if (fresh) {
  const sysId = (await sys('profile.get')).id;
  const filing = (await sys('efile.save', {name: 'LSK - Annual Filing 2026', client_id: lskClient, participants: [{id: staff, rights: 'edit'}], admins: [sysId]})).id;
  const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
- await sys('item.save', {efileId: filing, name: 'Collect bank statements', target_date: day(-3)});
- await sys('item.save', {efileId: filing, name: 'Prepare draft return', target_date: day(1)});
- await sys('item.save', {efileId: filing, name: 'Partner review', target_date: day(14)});
+ await sys('item.save', {efileId: filing, name: 'Collect bank statements', responsible_id: staff, target_date: day(-3)});
+ await sys('item.save', {efileId: filing, name: 'Prepare draft return', responsible_id: staff, target_date: day(1)});
+ await sys('item.save', {efileId: filing, name: 'Partner review', responsible_id: staff, target_date: day(14)});
  await sys('logout');
  await mi('logout');
  const me = session(); await me('login', {username: 'Michelle', password});

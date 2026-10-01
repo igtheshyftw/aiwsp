@@ -342,7 +342,7 @@ try {
  assert.equal(await teamNotes(st), stBefore, 'Others are not, while the client has a service team');
  // eFiles for the client start with its team; the client page shows them with their open work.
  const lskFile = (await sys('efile.save', {name: 'LSK Tax 2026', client_id: lskClient, participants: [{id: teamMate, rights: 'edit'}], admins: [(await sys('profile.get')).id]})).id;
- await tm('item.save', {efileId: lskFile, name: 'File return', target_date: '2020-01-31'});
+ const fileReturn = (await tm('item.save', {efileId: lskFile, name: 'File return', target_date: '2020-01-31'})).id;
  const view = await tm('client.view', {id: lskClient});
  assert.deepEqual(view.efiles.map(e => [e.name, e.open, e.overdue]), [['LSK Tax 2026', 1, 1]]);
  assert.equal((await tm('efile.get', {id: lskFile})).client.code, 'LSK');
@@ -356,6 +356,23 @@ try {
  const reminders = (await tm('notifications')).filter(n => n.kind === 'deadline').map(n => n.title);
  assert(reminders.some(t => t.startsWith('Overdue by') && t.endsWith('File return')) && reminders.some(t => t.startsWith('Due in 1 day') && t.endsWith('Draft return')), reminders.join(' | '));
  assert.equal((await sys('jobs.run')).sent, 0, 'Each reminder is sent once');
+ // Responsible person and completion: My Work lists what is assigned to me; completing an item takes it off every list.
+ await sys('item.assign', {id: fileReturn, userId: staff}, {ok: false}); // not a member of the eFile
+ await sys('item.assign', {id: fileReturn, userId: teamMate});
+ assert((await tm('notifications')).some(n => n.kind === 'assigned' && n.item_id === fileReturn));
+ assert.deepEqual((await tm('todo.mywork')).map(r => [r.name, r.overdue]), [['LSK Tax 2026 - File return', true]]);
+ assert.equal((await tm('item.get', {id: fileReturn})).item.responsible, 'WSP Team');
+ const review = (await sys('item.save', {efileId: lskFile, name: 'Partner review', responsible_id: teamMate})).id;
+ assert.equal((await tm('counters')).mywork, 2);
+ await st('item.complete', {id: fileReturn}, {ok: false}); // no access to the eFile
+ await tm('item.complete', {id: fileReturn});
+ assert.deepEqual((await tm('todo.mywork')).map(r => r.id), [review]);
+ assert(!(await tm('todo.deadlines')).some(r => r.id === fileReturn));
+ assert.equal((await tm('item.get', {id: fileReturn})).item.completed.by, 'WSP Team');
+ await tm('item.assign', {id: fileReturn, userId: teamMate}, {ok: false}); // finished
+ await tm('item.complete', {id: fileReturn, reopen: true});
+ assert.equal((await tm('todo.mywork')).length, 2);
+ await mi('item.complete', {id: claimItem}, {ok: false}); // approval items finish by approval
  // Service Team Transfer hands the user's clients to a colleague.
  assert.equal((await sys('user.transfer', {id: teamMate, kind: 'teamTransfer', to: staff})).count, 1);
  assert.deepEqual([(await tm('counters')).clients, (await st('counters')).clients], [0, 1]);
