@@ -5,8 +5,10 @@
 // System Admins see all and manage the assistant settings.
 import {all, get, run, uid, now, tx, type Row} from '../db';
 import {check, fail, live} from '../auth';
-import {type Ctx, context, allowed, text, required, log, notify, userLabel} from '../ctx';
-import {answer, type AgentRequest} from '../agent';
+import {type Ctx, context, allowed, text, required, log, notify, userLabel, OPEN_ITEM, today} from '../ctx';
+import {answer, type AgentRequest, type AgentItem} from '../agent';
+import {visible, efile as openEfile, may} from '../access';
+import {itemActions, STATUS_LABEL} from './item';
 import {companyTeam, servedCompanies} from './client';
 
 const settings = (): Row => { const s = get('SELECT * FROM assistant_setting WHERE id=1')!; return {...s, suggestions: JSON.parse(s.suggestions || '[]')}; };
@@ -46,6 +48,25 @@ const post = (convId: string, role: string, body: string, author: Row | null, st
 };
 const markRead = (userId: string, convId: string) => run('INSERT INTO chat_read(user_id,conversation_id,at) VALUES(?,?,?) ON CONFLICT DO UPDATE SET at=excluded.at', userId, convId, now());
 
+// What the agent may know about this client's work: open items the client user can see, and open items of WSP eFiles for this
+// client that are marked "Share item status with the client". Names, status, target dates and responsible person only.
+function clientContext(cv: Row, client: Row): AgentRequest['context'] {
+ const u = get('SELECT u.*, co.status AS company_status FROM user u JOIN company co ON co.id=u.company_id WHERE u.id=?', client.id)!;
+ const [cond, args] = visible(context(u));
+ const cols = `i.id, i.name, i.status, i.target_date, i.round, e.name AS efile, (SELECT username FROM user WHERE id=i.responsible_id) AS responsible,
+  (SELECT title FROM item_step s WHERE s.item_id=i.id AND s.round=i.round AND s.decision IS NULL ORDER BY position LIMIT 1) AS step`;
+ const own = all(`SELECT ${cols} FROM item i JOIN efile e ON e.id=i.efile_id WHERE e.archived=0 AND ${OPEN_ITEM} AND ${cond} ORDER BY i.target_date='', i.target_date LIMIT 50`, ...args);
+ const shared = all(`SELECT ${cols} FROM item i JOIN efile e ON e.id=i.efile_id JOIN client cl ON cl.id=e.client_id
+   WHERE e.archived=0 AND e.share_client=1 AND cl.account_company_id=? AND ${OPEN_ITEM} ORDER BY i.target_date='', i.target_date LIMIT 50`, cv.company_id);
+ const t = today(); const seen = new Set<string>();
+ const open_items: AgentItem[] = [...own, ...shared].filter(r => !seen.has(r.id) && seen.add(r.id)).slice(0, 80).map(r => ({efile: r.efile, name: r.name,
+  status: r.status === 'pending' ? `${STATUS_LABEL.pending}${r.step ? ` (step: ${r.step})` : ''}` : STATUS_LABEL[r.status], target_date: r.target_date,
+  overdue: !!r.target_date && r.target_date < t, responsible: r.responsible ?? '', step: r.step ?? ''}));
+ const op = operatorId();
+ const rec = op ? get('SELECT * FROM client WHERE company_id=? AND account_company_id=?', op, cv.company_id) : null;
+ return {client_record: rec ? {code: rec.code, name: rec.name_en || rec.name_cn, service_team: companyTeam(op!, cv.company_id).map(id => userLabel(get('SELECT * FROM user WHERE id=?', id)!))} : null, open_items};
+}
+
 // Run the agent in the background: a "thinking" message fills in as the answer streams, then is sent or held for review.
 const running = new Set<string>();
 function runAgent(convId: string) {
@@ -58,7 +79,7 @@ function runAgent(convId: string) {
  const msgId = post(convId, 'agent', '', null, 'thinking');
  running.add(convId);
  const req: AgentRequest = {conversation: {id: cv.id, title: cv.title}, client: {id: client.id, name: userLabel(client), company: company.name_en || company.name_cn, company_id: company.id},
-  messages: history.map(m => ({role: m.role, content: m.body, author: m.author, at: m.created_at})), question};
+  context: clientContext(cv, client), messages: history.map(m => ({role: m.role, content: m.body, author: m.author, at: m.created_at})), question};
  let last = 0;
  const onDelta = (textSoFar: string) => { const t = Date.now(); if (t - last < 250) return; last = t; run(`UPDATE chat_message SET body=?, updated_at=? WHERE id=? AND state='thinking'`, textSoFar, now(), msgId); };
  answer(req, onDelta).then(r => tx(() => {
@@ -134,6 +155,8 @@ export const chatActions: Record<string, (c: Ctx, b: any) => any> = {
   const asStaff = !!b.staff && cv.staff;
   markRead(c.user.id, cv.id);
   return {conversation: summary(cv, c.user.id, asStaff), messages: visibleMessages(cv, asStaff), staff: asStaff, mine: cv.mine,
+   items: asStaff ? all(`SELECT i.id, i.seq, i.name, i.status, i.efile_id, e.name AS efile FROM chat_link l JOIN item i ON i.id=l.item_id JOIN efile e ON e.id=i.efile_id
+     WHERE l.conversation_id=? ORDER BY l.at`, cv.id).map(r => ({...r, status_label: STATUS_LABEL[r.status]})) : [],
    thinking: !!get(`SELECT 1 FROM chat_message WHERE conversation_id=? AND state='thinking'`, cv.id)};
  },
  'chat.send'(c, b) {
@@ -186,6 +209,29 @@ export const chatActions: Record<string, (c: Ctx, b: any) => any> = {
    log(c, 'chat', 'add', `专业人员回复:${cv.title}`, cv.company_id);
   });
   return {};
+ },
+ // Turn a client's request into work: eFiles this staff member can add items to, the client's own eFiles first.
+ 'chat.targets'(c, b) {
+  const cv = openConv(c, b.id); check(cv.staff);
+  check(allowed(c, 'createItem'), 'Your level does not allow creating items.');
+  const [cond, args] = visible(c);
+  const op = operatorId();
+  const clientId = op ? get('SELECT id FROM client WHERE company_id=? AND account_company_id=?', op, cv.company_id)?.id ?? '' : '';
+  return all(`SELECT e.* FROM efile e WHERE e.archived=0 AND ${cond} ORDER BY (e.client_id IS NOT NULL AND e.client_id=?) DESC, e.name`, ...args, clientId)
+   .filter(e => may(c, openEfile(c, e.id), 'edit')).map(e => ({id: e.id, name: e.name, for_client: !!clientId && e.client_id === clientId}));
+ },
+ async 'chat.toItem'(c, b) {
+  const cv = openConv(c, b.id); check(cv.staff, 'Only WSP staff create items from conversations.');
+  const msg = b.messageId ? get(`SELECT * FROM chat_message WHERE id=? AND conversation_id=? AND role='client'`, text(b.messageId, 64), cv.id) : null;
+  if (b.messageId) check(msg, 'Message is unavailable.');
+  const {id: itemId} = await itemActions['item.save'](c, {efileId: b.efileId, name: required(b.name, 'Item name', 2000), target_date: b.target_date, responsible_id: b.responsible_id});
+  const item = get('SELECT i.*, e.name AS efile FROM item i JOIN efile e ON e.id=i.efile_id WHERE i.id=?', itemId)!;
+  tx(() => {
+   run('INSERT OR IGNORE INTO chat_link(conversation_id,item_id,message_id,created_by,at) VALUES(?,?,?,?,?)', cv.id, itemId, msg?.id ?? null, c.user.id, now());
+   post(cv.id, 'note', `Created item #${item.seq} in ${item.efile}: ${item.name}`, c.user);
+   run('INSERT INTO item_comment(id,item_id,user_id,body,at) VALUES(?,?,?,?,?)', uid(), itemId, c.user.id, `From client conversation "${cv.title}"${msg ? `:\n${msg.body.slice(0, 1500)}` : ''}`, now());
+  });
+  return {id: itemId, efile_id: item.efile_id, seq: item.seq};
  },
  'chat.note'(c, b) {
   const cv = openConv(c, b.id); check(cv.staff);

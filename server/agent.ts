@@ -7,9 +7,14 @@
 // Without either, the assistant tells the client that a WSP professional will reply, and hands the conversation to staff.
 
 export type AgentMessage = {role: 'client' | 'agent' | 'staff', content: string, author: string, at: string};
+export type AgentItem = {efile: string, name: string, status: string, target_date: string, overdue: boolean, responsible: string, step: string};
 export type AgentRequest = {
  conversation: {id: string, title: string},
  client: {id: string, name: string, company: string, company_id: string},
+ // What the assistant may tell this client about their work (open items only; read-only):
+ //  - items in eFiles the client user takes part in, and
+ //  - items in WSP eFiles for this client whose administrator ticked "Share item status with the client".
+ context: {client_record: {code: string, name: string, service_team: string[]} | null, open_items: AgentItem[]},
  messages: AgentMessage[],     // the conversation so far, oldest first (staff-only notes and unapproved drafts are never included)
  question: string,             // the client's latest message
 };

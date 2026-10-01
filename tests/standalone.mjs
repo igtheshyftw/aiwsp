@@ -398,6 +398,32 @@ try {
  await tm('item.complete', {id: fileReturn, reopen: true});
  assert.equal((await tm('todo.mywork')).length, 2);
  await mi('item.complete', {id: claimItem}, {ok: false}); // approval items finish by approval
+ // The agent learns the client's open work: their own eFiles always; WSP's eFiles for the client only when shared.
+ const qOpen = (await ch('chat.start', {text: 'What is still open for us?'})).id;
+ let tOpen = await settle(ch, qOpen);
+ let ctx = agentRequests.at(-1).context;
+ assert.equal(ctx.client_record.code, 'LSK'); assert.deepEqual(ctx.client_record.service_team, ['WSP Team']);
+ assert(!ctx.open_items.some(i => i.efile === 'LSK Tax 2026'), 'WSP-internal work stays private by default');
+ const taxFile = await sys('efile.get', {id: lskFile});
+ await sys('efile.save', {id: lskFile, version: taxFile.version, name: taxFile.name, client_id: lskClient, share_client: true, participants: taxFile.participants.map(p => ({id: p.id, rights: p.rights})), admins: taxFile.admins.map(a => a.id)});
+ await ch('chat.send', {id: qOpen, text: 'And the tax work?'}); tOpen = await settle(ch, qOpen);
+ ctx = agentRequests.at(-1).context;
+ const shared = ctx.open_items.filter(i => i.efile === 'LSK Tax 2026');
+ assert.deepEqual(shared.map(i => [i.name, i.responsible]).sort(), [['Draft return', ''], ['File return', 'wsp-team'], ['Partner review', 'wsp-team']]);
+ assert(shared.find(i => i.name === 'File return').overdue);
+ // WSP staff turn a client message into an item; the item and the conversation link to each other.
+ const ask = tOpen.messages.find(m => m.role === 'client' && m.body === 'And the tax work?');
+ await ch('chat.toItem', {id: qOpen, messageId: ask.id, efileId: lskFile, name: 'x'}, {ok: false});
+ const targets = await tm('chat.targets', {id: qOpen});
+ assert.equal(targets[0].id, lskFile); assert(targets[0].for_client);
+ const made = await tm('chat.toItem', {id: qOpen, messageId: ask.id, efileId: lskFile, name: 'Send the client a status summary', responsible_id: teamMate});
+ const linked = await tm('chat.get', {id: qOpen, staff: true});
+ assert.deepEqual(linked.items.map(i => i.id), [made.id]);
+ assert(linked.messages.some(m => m.role === 'note' && m.body.startsWith(`Created item #${made.seq}`)));
+ assert(!(await ch('chat.get', {id: qOpen})).messages.some(m => m.role === 'note'), 'The client does not see the internal note');
+ const madeItem = await tm('item.get', {id: made.id});
+ assert.deepEqual(madeItem.conversations.map(cv => cv.id), [qOpen]);
+ assert(madeItem.comments[0].body.includes('And the tax work?'));
  // Service Team Transfer hands the user's clients to a colleague.
  assert.equal((await sys('user.transfer', {id: teamMate, kind: 'teamTransfer', to: staff})).count, 1);
  assert.deepEqual([(await tm('counters')).clients, (await st('counters')).clients], [0, 1]);
@@ -437,7 +463,7 @@ try {
  const q4 = (await ch('chat.start', {text: 'Normal question'})).id;
  await settle(ch, q4);
  assert.equal((await st('chat.get', {id: q4, staff: true})).messages.at(-1).state, 'review');
- assert.equal((await ch('chat.list')).length, 4);
+ assert.equal((await ch('chat.list')).length, 5);
 
  // ---- System log records user/permission changes, approvals, overrides, downloads and logins.
  const logs = await mi('log.list', {companyId: lsk});

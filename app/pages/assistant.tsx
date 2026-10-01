@@ -1,7 +1,7 @@
 // AiWSP Assistant: a chat for clients, an inbox for WSP professionals (review, take over, reply, notes) and settings.
 import {Fragment, useEffect, useRef, useState, type ReactNode} from 'react';
 import {api, go, fmtTime} from '../lib';
-import {Breadcrumb, Loading, toast, toastError, confirmBox, FormPanel, FieldRow} from '../ui';
+import {Breadcrumb, Loading, toast, toastError, confirmBox, FormPanel, FieldRow, Modal} from '../ui';
 
 // ---- Formatting: paragraphs, bullet/numbered lines, **bold** and links. Everything else is plain text (React escapes it).
 function inline(s: string): ReactNode[] {
@@ -27,7 +27,7 @@ export function Rich({text}: {text: string}) {
 }
 
 type Msg = {id: string, role: string, author: string, body: string, state: string, meta: any, rating?: number | null, created_at: string, reviewed_by?: string};
-type Thread = {conversation: any, messages: Msg[], staff: boolean, mine: boolean, thinking: boolean};
+type Thread = {conversation: any, messages: Msg[], staff: boolean, mine: boolean, thinking: boolean, items: any[]};
 
 // Poll quickly while the assistant is writing, slowly otherwise (also picks up staff replies).
 function useThread(id: string | undefined, staff: boolean) {
@@ -43,14 +43,15 @@ function useThread(id: string | undefined, staff: boolean) {
  return {t, reload: () => setTick(x => x + 1)};
 }
 
-function Bubble({m, cfg, staffView, onRate, onReview}: {m: Msg, cfg: any, staffView: boolean, onRate?: (r: number) => void, onReview?: (approve: boolean, body?: string) => void}) {
+function Bubble({m, cfg, staffView, onRate, onReview, onToItem}: {m: Msg, cfg: any, staffView: boolean, onRate?: (r: number) => void, onReview?: (approve: boolean, body?: string) => void, onToItem?: () => void}) {
  const [edit, setEdit] = useState<string | null>(null);
  if (m.role === 'system') return <div className="chat-system">{m.body}</div>;
  const who = m.role === 'client' ? (staffView ? m.author : 'You') : m.role === 'agent' ? cfg.name : m.role === 'note' ? `${m.author} · internal note` : `${m.author} · WSP`;
  return <div className={`bubble ${m.role} ${m.state}`}>
   <div className="who">{m.role === 'agent' && <i className="fa fa-comments-o"/>} {who} <span className="when">{fmtTime(m.created_at).slice(5, 16)}</span>
    {m.state === 'review' && <span className="ext">waiting for your review</span>}{m.state === 'discarded' && <span className="ext">discarded by {m.reviewed_by}</span>}
-   {m.reviewed_by && m.state === 'sent' && staffView && <span className="ext">reviewed by {m.reviewed_by}{m.meta?.edited ? ', edited' : ''}</span>}</div>
+   {m.reviewed_by && m.state === 'sent' && staffView && <span className="ext">reviewed by {m.reviewed_by}{m.meta?.edited ? ', edited' : ''}</span>}
+   {onToItem && m.role === 'client' && <button className="to-item" title="Create an item in an eFile from this message" onClick={onToItem}><i className="fa fa-plus-square-o"/> Create item</button>}</div>
   {m.state === 'thinking' && !m.body ? <div className="typing"><span/><span/><span/></div> : edit !== null ? <textarea className="chat-edit" value={edit} onChange={e => setEdit(e.target.value)} rows={8}/> : <div className="body"><Rich text={m.body}/>{m.state === 'thinking' && <span className="cursor"/>}</div>}
   {m.meta?.sources?.length > 0 && <div className="sources">Sources: {m.meta.sources.map((s: any, i: number) => <span key={i}>{s.url ? <a href={s.url} target="_blank" rel="noopener noreferrer">{s.title || s.url}</a> : s.title}</span>)}</div>}
   {staffView && m.role === 'agent' && typeof m.meta?.confidence === 'number' && <div className="sources">Confidence {Math.round(m.meta.confidence * 100)}%{m.rating === -1 ? ' · client marked unhelpful' : m.rating === 1 ? ' · client marked helpful' : ''}</div>}
@@ -82,13 +83,41 @@ function ThreadView({t, cfg, staffView, reload}: {t: Thread, cfg: any, staffView
  const last = t.messages[t.messages.length - 1];
  useEffect(() => { end.current?.scrollIntoView({block: 'end'}); }, [t.messages.length, last?.body.length]);
  const act = async (action: string, params: any, msg?: string) => { try { await api(action, {id: t.conversation.id, ...params}); if (msg) toast(msg); reload(); } catch (e) { toastError(e); } };
+ const [toItem, setToItem] = useState<Msg | null>(null);
  return <div className="chat-scroll">
   {!staffView && <div className="chat-system">{cfg.welcome}</div>}
-  {t.messages.map(m => <Bubble key={m.id} m={m} cfg={cfg} staffView={staffView}
+  {staffView && t.items?.length > 0 && <div className="chat-items"><b>Items from this conversation:</b> {t.items.map((i: any) =>
+   <a key={i.id} className="link" href={`#/ims/efile/${i.efile_id}/item/${i.id}`}>#{i.seq} {i.name} <span className="muted">({i.efile} · {i.status_label})</span></a>)}</div>}
+  {toItem && <ToItemDialog conv={t.conversation} msg={toItem} onClose={done => { setToItem(null); if (done) reload(); }}/>}
+  {t.messages.map(m => <Bubble key={m.id} m={m} cfg={cfg} staffView={staffView} onToItem={staffView ? () => setToItem(m) : undefined}
    onRate={!staffView && t.mine ? r => act('chat.rate', {messageId: m.id, rating: m.rating === r ? 0 : r}) : undefined}
    onReview={staffView ? (approve, body) => act('chat.review', {messageId: m.id, approve, body}, approve ? 'Answer sent.' : 'Answer discarded.') : undefined}/>)}
   <div ref={end}/>
  </div>;
+}
+
+// Staff: turn a client's message into an item in an eFile (the client's own eFiles are listed first).
+function ToItemDialog({conv, msg, onClose}: {conv: any, msg: Msg, onClose: (done: boolean) => void}) {
+ const [targets, setTargets] = useState<any[] | null>(null);
+ const [f, setF] = useState({efileId: '', name: msg.body.slice(0, 300), target_date: '', responsible_id: ''});
+ const [people, setPeople] = useState<any[]>([]);
+ useEffect(() => { api<any[]>('chat.targets', {id: conv.id}).then(l => { setTargets(l); if (l[0]) setF(v => ({...v, efileId: l[0].id})); }).catch(e => { toastError(e); onClose(false); }); }, [conv.id]); // eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(() => { if (f.efileId) api('efile.get', {id: f.efileId}).then(r => setPeople(r.assignable ?? [])).catch(() => setPeople([])); }, [f.efileId]);
+ const save = async () => {
+  try { const r = await api('chat.toItem', {id: conv.id, messageId: msg.id, ...f}); toast(`Item #${r.seq} created.`); onClose(true); } catch (e) { toastError(e); }
+ };
+ return <Modal title="Create item from client message" onClose={() => onClose(false)} wide
+  foot={<><button className="btn grey" onClick={() => onClose(false)}>Cancel</button><button className="btn blue" disabled={!f.efileId || !f.name.trim()} onClick={save}>Create item</button></>}>
+  {!targets ? <Loading/> : !targets.length ? <p>You cannot add items to any eFile.</p> : <>
+   <div className="field"><label>eFile</label><select value={f.efileId} onChange={e => setF({...f, efileId: e.target.value, responsible_id: ''})}>
+    {targets.map(e => <option key={e.id} value={e.id}>{e.name}{e.for_client ? ` — ${conv.company}` : ''}</option>)}</select></div>
+   <div className="field"><label>Item name</label><textarea rows={3} value={f.name} onChange={e => setF({...f, name: e.target.value})}/></div>
+   <div className="field"><label>Target Date</label><input type="date" value={f.target_date} onChange={e => setF({...f, target_date: e.target.value})}/></div>
+   <div className="field"><label>Responsible</label><select value={f.responsible_id} onChange={e => setF({...f, responsible_id: e.target.value})}>
+    <option value="">—</option>{people.map(u => <option key={u.id} value={u.id}>{u.label}</option>)}</select></div>
+   <p className="hint">The client's message is added to the item as a comment, and the item is linked to this conversation. The client is not told.</p>
+  </>}
+ </Modal>;
 }
 
 // ---------------- Client chat

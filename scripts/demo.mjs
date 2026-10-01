@@ -63,7 +63,7 @@ if (fresh) {
  const lskClient = (await sys('client.save', {code: 'L002SH', name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', phone: '021-6888 0000',
   introducer: 'Michael Leong', business: 'Investment management', account_company_id: lsk, team_type: 'user', users: [staff]})).id;
  const sysId = (await sys('profile.get')).id;
- const filing = (await sys('efile.save', {name: 'LSK - Annual Filing 2026', client_id: lskClient, participants: [{id: staff, rights: 'edit'}], admins: [sysId]})).id;
+ const filing = (await sys('efile.save', {name: 'LSK - Annual Filing 2026', client_id: lskClient, share_client: true, participants: [{id: staff, rights: 'edit'}], admins: [sysId]})).id;
  const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
  await sys('item.save', {efileId: filing, name: 'Collect bank statements', responsible_id: staff, target_date: day(-3)});
  await sys('item.save', {efileId: filing, name: 'Prepare draft return', responsible_id: staff, target_date: day(1)});

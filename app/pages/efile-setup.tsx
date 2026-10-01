@@ -42,7 +42,7 @@ export function EfileForm({id, clientId}: {id?: string, clientId?: string}) {
  const save = async () => {
   try {
    const r = await api('efile.save', {id, version: f.version, name: f.name, tag: f.tag, highlight: f.highlight, color: f.color, report_name: f.report_name, currency: f.currency,
-    show_date: f.show_date, show_amount: f.show_amount, approval: f.approval, client_id: f.client_id || '',
+    show_date: f.show_date, show_amount: f.show_amount, approval: f.approval, client_id: f.client_id || '', share_client: !!f.share_client,
     participants: withRights('participants'), groups: withRights('groups'), admins: ids('admins'), wechat_participants: ids('wechat_participants'), wechat_groups: ids('wechat_groups')});
    toast('Saved.'); go(f.approval && !(f.steps?.length) ? `/ims/efile/${r.id}/confirmation` : `/ims/efile/${r.id}`);
   } catch (e) { toastError(e); }
@@ -54,6 +54,8 @@ export function EfileForm({id, clientId}: {id?: string, clientId?: string}) {
    <FieldRow label="Tag"><textarea value={f.tag} onChange={e => setF({...f, tag: e.target.value})}/></FieldRow>
    {clients.length > 0 && <FieldRow label="Client"><select value={f.client_id ?? ''} onChange={e => chooseClient(e.target.value)}><option value="">—</option>{clients.map(cl => <option key={cl.id} value={cl.id}>{cl.label}</option>)}</select>
     {!id && <div className="hint">Choosing a client adds its service team as participants.</div>}</FieldRow>}
+   {clients.length > 0 && f.client_id && <div className="field checks"><label><input type="checkbox" checked={!!f.share_client} onChange={e => setF({...f, share_client: e.target.checked})}/>Share item status with the client in the AiWSP Assistant</label>
+    <div className="hint">When the client asks, the assistant may tell them the names, status, target dates and responsible person of this eFile's open items. Amounts, attachments and comments are never shared.</div></div>}
    <FieldRow label="Item Template Folder"><button className="btn-sq" style={{width: 44}} title="Choose folder" onClick={() => toast('Item templates are not set up yet.')}><i className="fa fa-check-square-o"/></button></FieldRow>
    <div className="field"><label>Select Type</label><label style={{display: 'flex', gap: 8, alignItems: 'center'}}><input type="radio" checked readOnly/> User And Group</label></div>
    <PickedField label="Participants" req value={semi(f.participants)} onPick={pickUsers('participants', 'Participants (your staff and approved connection contacts)')} onClear={clear('participants')}/>
@@ -89,7 +91,7 @@ export function EfileView({id}: {id: string}) {
  const {data: e, error} = useLoad(() => api('efile.get', {id}), [id]);
  if (!e) return <Loading error={error}/>;
  const rows: [string, string][] = [
-  ['Name', e.name], ['Tag', e.tag], ['Client', e.client ? `${e.client.code} ${e.client.name_cn}` : ''], ['Select Type', 'User And Group'], ['Participants', rightsText(e.participants)], ['Group', rightsText(e.groups)],
+  ['Name', e.name], ['Tag', e.tag], ['Client', e.client ? `${e.client.code} ${e.client.name_cn}${e.share_client ? ' (item status shared with the client)' : ''}` : ''], ['Select Type', 'User And Group'], ['Participants', rightsText(e.participants)], ['Group', rightsText(e.groups)],
   ['Administrators', semi(e.admins)], ['Highlight', e.highlight ? 'Yes' : 'No'], ['Color', e.color],
   ['Approval', e.approval ? 'Required' : 'No approval required'],
   ...e.steps.map((s: any) => [`Step ${s.position}: ${s.title}`, s.users.map((u: any) => u.label + ';').join('')] as [string, string]),

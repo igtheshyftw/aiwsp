@@ -237,6 +237,10 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
    attachments: all('SELECT id,filename,size,content_type,at FROM item_attachment WHERE item_id=? ORDER BY at', i.id),
    can_override: c.sys && ['pending', 'approved', 'rejected'].includes(i.status),
    assignable: may(c, e, 'edit') ? assignable(e).map(u => ({id: u.id, label: userLabel(u)})) : [],
+   // Client conversations this item came from: shown to the client who asked and to WSP staff who handle conversations.
+   conversations: all('SELECT cv.id, cv.title, cv.user_id FROM chat_link l JOIN chat_conversation cv ON cv.id=l.conversation_id WHERE l.item_id=?', i.id)
+    .filter(cv => cv.user_id === c.user.id || c.sys || (allowed(c, 'clientChat') && !!get('SELECT operator FROM company WHERE id=?', c.companyId)?.operator))
+    .map(cv => ({id: cv.id, title: cv.title, staff: cv.user_id !== c.user.id})),
   };
  },
  async 'item.save'(c, b) {

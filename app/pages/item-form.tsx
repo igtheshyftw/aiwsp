@@ -150,6 +150,7 @@ export function ItemView({efileId, id}: {efileId: string, id: string}) {
      <b>Responsible</b><span>{i.can_assign && d.assignable.length ? <select aria-label="Responsible" value={i.responsible_id} onChange={e => call('item.assign', {id, userId: e.target.value}, 'Responsible person updated.')} style={{height: 30, minWidth: 220, width: 'auto', maxWidth: 360}}>
       <option value="">—</option>{d.assignable.map((u: any) => <option key={u.id} value={u.id}>{u.label}</option>)}</select> : i.responsible || '—'}</span>
      {i.completed && <><b>Completed</b><span>{i.completed.by}, {fmtTime(i.completed.at)}</span></>}
+     {d.conversations?.length > 0 && <><b>From conversation</b><span>{d.conversations.map((cv: any) => <a key={cv.id} className="link" style={{marginRight: 12}} href={href(cv.staff ? `/assistant/inbox/${cv.id}` : `/assistant/${cv.id}`)}><i className="fa fa-comments-o"/> {cv.title}</a>)}</span></>}
      <b>Status</b><span>{d.efile.approval || i.status !== 'none' ? <Status i={i}/> : 'No approval required'}{i.step && ` · step ${i.step.position} of ${i.step.total}: ${i.step.title}`}{i.stage ? ` · process stage ${i.stage}` : ''}{i.locked ? ' · locked' : ''}{i.archived ? ' · archived' : ''}</span>
      <b>Flags</b><span>{[i.highlight && 'Highlight', i.move_to_top && 'Move to Top', i.special_marking && 'Special Marking'].filter(Boolean).join(', ') || '—'}</span>
      <b>Created</b><span>{i.created_by}, {fmtTime(i.created_at)}</span>

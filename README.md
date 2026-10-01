@@ -41,6 +41,8 @@ The screens copy the original IMS. How it works follows the AiWSP requirements i
 - **AiWSP Assistant:**
   - Clients chat with your agent and can ask for a person.
   - WSP professionals review answers, take over, reply and keep internal notes in a Client Conversations inbox.
+  - The agent receives the client's open items (their own eFiles, plus WSP eFiles marked "Share item status with the client") so it can answer status questions.
+  - Staff can turn any client message into an item in an eFile; the item and conversation link to each other.
   - The agent plugs in through `AGENT_URL` or `server/agent.ts`; see [docs/aiwsp/assistant.md](docs/aiwsp/assistant.md).
 - **Clients** (IMS → Client Management):
   - A client record is added in three steps and can be linked to the client's own company account.

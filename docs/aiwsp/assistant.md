@@ -19,11 +19,13 @@ The **AiWSP Assistant** is the chat in the left menu. Clients ask questions ther
 - **Hand back** to the assistant
 - **Internal notes**: never shown to the client, never sent to the agent
 - **Retry**: ask the agent the latest question again
+- **Create item** on any client message: pick an eFile (the client's own first), name, target date and responsible person. The message becomes the item's first comment, the item and conversation link to each other, and an internal note records it. The client is not told.
+- a **My clients** filter for the clients whose service team you are on
 
 **Safeguards:**
 - **Who sees conversations:**
   - A client sees only their own conversations.
-  - WSP staff need the *Client conversations* function (Levels 1–2 by default), and see a company's conversations only if they are designated on a confirmed connection with that company (Account → Connection).
+  - WSP staff need the *Client conversations* function (Levels 1–2 by default), and see a company's conversations only if they are designated on a confirmed connection with that company (Account → Connection), or are on the service team of WSP's client record for that company (IMS → Client Management). The service team is notified first.
   - System Admins see all conversations and manage the settings.
 - **Review:** the "review every answer" switch (Settings), or `AGENT_REVIEW_BELOW` to hold only low-confidence answers. While an answer is held, the client sees "An answer is being prepared and checked by a WSP professional."
 - **Failures:** if the agent fails or times out (`AGENT_TIMEOUT_MS`, default 60 s), the client is told a professional will follow up. The conversation then moves to *Waiting for WSP* and staff are notified.
@@ -47,6 +49,12 @@ Set these environment variables on the IMS server:
 {
   "conversation": {"id": "…", "title": "What documents do you need this month?"},
   "client": {"id": "…", "name": "袁宝而:Michelle", "company": "LSK & Partners Limited", "company_id": "…"},
+  "context": {
+    "client_record": {"code": "L002SH", "name": "LSK & Partners Limited", "service_team": ["WSP Professional"]},
+    "open_items": [
+      {"efile": "LSK - Annual Filing 2026", "name": "Prepare draft return", "status": "No approval required", "target_date": "2026-10-02", "overdue": false, "responsible": "wsp-staff", "step": ""}
+    ]
+  },
   "messages": [
     {"role": "client", "content": "What documents do you need this month?", "author": "袁宝而:Michelle", "at": "2026-09-30T02:15:00Z"},
     {"role": "agent",  "content": "…", "author": "", "at": "…"},
@@ -56,6 +64,14 @@ Set these environment variables on the IMS server:
 }
 ```
 `messages` holds only what the client has seen: no internal notes, no drafts still under review, and no discarded drafts.
+
+`context` is what the agent may tell this client about their work, so it can answer "what is the status of…" questions:
+- `client_record`: WSP's client record linked to the client's company (IMS → Client Management), with the people serving them; `null` if none is linked.
+- `open_items`: up to 80 open items (not completed, approved, rejected or archived), earliest target date first, from
+  - eFiles the client user takes part in, and
+  - WSP eFiles for this client whose administrator ticked **Share item status with the client** in eFile Setup.
+
+  Only names, status (with the current approval step), target date, overdue flag and responsible person are sent. Amounts, attachments and comments never are. WSP's internal eFiles stay private unless they are shared this way.
 
 **Reply, option A: one JSON response**
 ```json

@@ -16,9 +16,14 @@ createServer(async (req, res) => {
  if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
  if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) { res.writeHead(401); return res.end(); }
  let body = ''; for await (const chunk of req) body += chunk;
- const {question, client, messages} = JSON.parse(body);
+ const {question, client, messages, context} = JSON.parse(body);
  const q = question.toLowerCase();
- const hit = FAQ.find(f => f.keys.some(k => q.includes(k)));
+ // Status questions are answered from context.open_items (the client's open work that IMS lets the agent see).
+ const items = context?.open_items ?? [];
+ const statusHit = /open|status|progress|outstanding|进度|状态/.test(q) && items.length ? {reply: `Here is what is open for ${client.company}:\n\n` +
+  items.slice(0, 8).map(i => `- **${i.name}** (${i.efile}): ${i.status}${i.target_date ? `, target ${i.target_date}${i.overdue ? ' — overdue' : ''}` : ''}${i.responsible ? `, with ${i.responsible}` : ''}`).join('\n') +
+  (context.client_record?.service_team?.length ? `\n\nYour WSP team: ${context.client_record.service_team.join(', ')}.` : ''), sources: [{title: 'IMS open items'}]} : null;
+ const hit = statusHit ?? FAQ.find(f => f.keys.some(k => q.includes(k)));
  const answer = hit ?? {reply: `Thank you, ${client.name}. I don't have a confident answer to that yet, so I have asked a WSP professional to reply.`, handoff: true, confidence: 0.2};
  console.log(`[example-agent] ${client.company} / ${client.name}: ${question} (${messages.length} earlier messages)`);
  if ((req.headers.accept ?? '').includes('text/event-stream')) {

@@ -105,6 +105,9 @@ CREATE TABLE IF NOT EXISTS chat_message(id TEXT PRIMARY KEY, conversation_id TEX
  reviewed_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS chat_message_conv ON chat_message(conversation_id, created_at);
 CREATE TABLE IF NOT EXISTS chat_read(user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, conversation_id TEXT NOT NULL REFERENCES chat_conversation(id) ON DELETE CASCADE, at TEXT NOT NULL, PRIMARY KEY(user_id, conversation_id));
+-- Items created from (or linked to) a client conversation by WSP staff.
+CREATE TABLE IF NOT EXISTS chat_link(conversation_id TEXT NOT NULL REFERENCES chat_conversation(id) ON DELETE CASCADE, item_id TEXT NOT NULL REFERENCES item(id) ON DELETE CASCADE,
+ message_id TEXT, created_by TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY(conversation_id, item_id));
 CREATE TABLE IF NOT EXISTS assistant_setting(id INTEGER PRIMARY KEY CHECK (id=1), enabled INTEGER NOT NULL DEFAULT 1, review INTEGER NOT NULL DEFAULT 0,
  name TEXT NOT NULL DEFAULT 'AiWSP Assistant', welcome TEXT NOT NULL DEFAULT '', disclaimer TEXT NOT NULL DEFAULT '', suggestions TEXT NOT NULL DEFAULT '[]');
 INSERT OR IGNORE INTO assistant_setting(id, welcome, disclaimer, suggestions) VALUES(1,
@@ -119,7 +122,8 @@ for (const [table, column, def] of [['client', 'fax', `TEXT NOT NULL DEFAULT ''`
  ['client', 'business', `TEXT NOT NULL DEFAULT ''`], ['client', 'team_type', `TEXT NOT NULL DEFAULT 'group'`],
  ['client', 'account_company_id', 'TEXT REFERENCES company(id)'], ['efile', 'client_id', 'TEXT REFERENCES client(id) ON DELETE SET NULL'],
  ['item', 'responsible_id', 'TEXT'], ['item', 'completed_by', 'TEXT'], ['item', 'completed_at', 'TEXT'],
- ['user', 'wecom_userid', `TEXT NOT NULL DEFAULT ''`], ['user', 'notify_channel', `TEXT NOT NULL DEFAULT 'auto'`]]) {
+ ['user', 'wecom_userid', `TEXT NOT NULL DEFAULT ''`], ['user', 'notify_channel', `TEXT NOT NULL DEFAULT 'auto'`],
+ ['efile', 'share_client', 'INTEGER NOT NULL DEFAULT 0']]) {
  if (!(sql.prepare(`PRAGMA table_info(${table})`).all() as any[]).some(c => c.name === column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
 }
 
