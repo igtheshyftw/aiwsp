@@ -346,3 +346,4 @@ tr.overdue td:first-child { border-left: 3px solid var(--red); }
 .tab-count.blue { background: var(--panel-blue); }
 .bubble .to-item { border: 0; background: none; color: var(--panel-blue); font-size: 12px; margin-left: 8px; cursor: pointer; padding: 0; }
 .chat-items { background: #f4f7fe; border: 1px solid #dfe7fb; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.report-summary th, .report-summary td { text-align: center; } .report-summary td { font-size: 22px; padding: 12px 6px; }

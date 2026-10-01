@@ -424,6 +424,17 @@ try {
  const madeItem = await tm('item.get', {id: made.id});
  assert.deepEqual(madeItem.conversations.map(cv => cv.id), [qOpen]);
  assert(madeItem.comments[0].body.includes('And the tax work?'));
+ // Reports count only eFiles the viewer takes part in.
+ const workRep = await tm('report.work', {});
+ const taxRow = workRep.by_efile.find(r => r.label === 'LSK Tax 2026');
+ assert.deepEqual([taxRow.open, taxRow.overdue], [4, 1]);
+ assert.equal(workRep.by_person.find(r => r.label === 'WSP Team').open, 3);
+ assert(workRep.by_client.some(r => r.label.startsWith('LSK ')));
+ assert(workRep.summary.overdue >= 1);
+ assert(!(await st('report.work', {})).by_efile.some(r => r.label === 'LSK Tax 2026'), 'No access, not counted');
+ await tm('report.work', {from: 'yesterday'}, {ok: false});
+ const miRep = await mi('report.work', {});
+ assert(miRep.summary.approvals >= 1 && miRep.summary.avg_approval_days !== null, JSON.stringify(miRep.summary));
  // Service Team Transfer hands the user's clients to a colleague.
  assert.equal((await sys('user.transfer', {id: teamMate, kind: 'teamTransfer', to: staff})).count, 1);
  assert.deepEqual([(await tm('counters')).clients, (await st('counters')).clients], [0, 1]);

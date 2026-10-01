@@ -13,6 +13,7 @@ import {ItemForm, ItemView} from './pages/item-form';
 import {SetProcess} from './pages/process';
 import {CompanyList, CompanyForm, UserList, UserForm, UserEfiles, RoleList, RoleForm, RoleUsers, GroupList, GroupForm, GroupUsers, GroupEfiles, SystemLog, Profile, Connections, Invitations} from './pages/account';
 import {ClientList, ClientForm, ClientView} from './pages/client';
+import {Reports} from './pages/report';
 import {AssistantChat, AssistantInbox, AssistantSettings} from './pages/assistant';
 
 function Router({me, setMe}: {me: Me, setMe: (m: Me) => void}) {
@@ -37,6 +38,7 @@ function Router({me, setMe}: {me: Me, setMe: (m: Me) => void}) {
   if (d === 'item' && e) return <ItemView efileId={c} id={e}/>;
  }
  if (a === 'ims' && b === 'system-link') return <SystemLink/>;
+ if (a === 'ims' && b === 'report') return <Reports me={me}/>;
  if (a === 'ims' && b === 'client') return c === 'new' ? <ClientForm/> : c && d === 'edit' ? <ClientForm id={c}/> : c ? <ClientView id={c}/> : <ClientList mine={query.mine === '1'}/>;
  if (a === 'account') {
   if (b === 'company') return c ? <CompanyForm id={c === 'new' ? undefined : c}/> : <CompanyList me={me}/>;

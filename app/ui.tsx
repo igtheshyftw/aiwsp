@@ -170,6 +170,7 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
      {open === 'ims' && <ul className="submenu">
       <li><a className={active('/ims/efile') ? 'active' : ''} href={href('/ims/efile')}>My eFile</a></li>
       {perms.has('client') && <li><a className={active('/ims/client') ? 'active' : ''} href={href('/ims/client')}>Client Management</a></li>}
+      <li><a className={active('/ims/report') ? 'active' : ''} href={href('/ims/report')}>Reports</a></li>
      </ul>}
     </li>
     {accountItems.length > 0 && <li className={open === 'account' ? 'open' : ''}>
