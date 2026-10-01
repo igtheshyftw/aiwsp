@@ -12,7 +12,7 @@ const POSITION_LABEL: Record<string, string> = {system: 'System Admin', chief: '
 
 function levelName(companyId: string, level: number) { return get('SELECT name FROM level WHERE company_id=? AND level=?', companyId, level)?.name ?? `Level ${level}`; }
 function publicUser(u: Row) {
- return {id: u.id, company_id: u.company_id, username: u.username, name_cn: u.name_cn, name_en: u.name_en, sex: u.sex, dept: u.dept, email: u.email, mobile: u.mobile,
+ return {id: u.id, company_id: u.company_id, username: u.username, name_cn: u.name_cn, name_en: u.name_en, sex: u.sex, dept: u.dept, email: u.email, mobile: u.mobile, wecom_userid: u.wecom_userid ?? '', notify_channel: u.notify_channel ?? 'auto',
   position: u.position, level: u.level, perms: JSON.parse(u.perms || '{}'), effective: [...userPerms(u)], expires: u.expires, responsible_id: u.responsible_id,
   state: u.state, live: !!live(u), mfa: !!u.totp_secret,
   role_label: [POSITION_LABEL[u.position], levelName(u.company_id, u.level)].join(' - ') + (u.expires ? ` (until ${u.expires.slice(0, 10)})` : '')};
@@ -130,7 +130,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
   const existing = b.id ? manageableUser(c, b.id) : null;
   const companyId = existing ? existing.company_id : companyScope(c, b.companyId, id => addsUsers(c, id));
   const f = {username: required(b.username, 'Name', 40), name_cn: text(b.name_cn, 80), name_en: text(b.name_en, 80), sex: ['M', 'F'].includes(b.sex) ? b.sex : '',
-   dept: text(b.dept, 200), email: text(b.email, 120), mobile: text(b.mobile, 40), level: Number(b.level ?? 3), expires: date(b.expires, 'Expiry date'), responsible_id: text(b.responsible_id, 64) || null};
+   dept: text(b.dept, 200), email: text(b.email, 120), mobile: text(b.mobile, 40), wecom_userid: text(b.wecom_userid, 64), level: Number(b.level ?? 3), expires: date(b.expires, 'Expiry date'), responsible_id: text(b.responsible_id, 64) || null};
   check(/^[A-Za-z0-9._-]{2,40}$/.test(f.username), 'Name may contain 2–40 letters, numbers, dots, hyphens or underscores.');
   check(!f.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email), 'Email is not valid.');
   check(!get('SELECT id FROM user WHERE username=? AND id<>?', f.username, existing?.id ?? ''), 'This name is already used by another account.');
@@ -153,10 +153,10 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
   const pw = existing ? null : await newPassword(b.password);
   return tx(() => {
    const id = existing?.id ?? uid();
-   if (existing) run('UPDATE user SET username=?,name_cn=?,name_en=?,sex=?,dept=?,email=?,mobile=?,level=?,perms=?,expires=?,responsible_id=?,position=?,revision=revision+? WHERE id=?',
-    f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.level, JSON.stringify(overrides), f.expires, f.responsible_id, position, position !== existing.position || f.level !== existing.level ? 1 : 0, id);
-   else run('INSERT INTO user(id,company_id,username,name_cn,name_en,sex,dept,email,mobile,level,perms,expires,responsible_id,position,salt,pass,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    id, companyId, f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.level, JSON.stringify(overrides), f.expires, f.responsible_id, position, pw!.salt, pw!.pass, now());
+   if (existing) run('UPDATE user SET username=?,name_cn=?,name_en=?,sex=?,dept=?,email=?,mobile=?,wecom_userid=?,level=?,perms=?,expires=?,responsible_id=?,position=?,revision=revision+? WHERE id=?',
+    f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.wecom_userid, f.level, JSON.stringify(overrides), f.expires, f.responsible_id, position, position !== existing.position || f.level !== existing.level ? 1 : 0, id);
+   else run('INSERT INTO user(id,company_id,username,name_cn,name_en,sex,dept,email,mobile,wecom_userid,level,perms,expires,responsible_id,position,salt,pass,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    id, companyId, f.username, f.name_cn, f.name_en, f.sex, f.dept, f.email, f.mobile, f.wecom_userid, f.level, JSON.stringify(overrides), f.expires, f.responsible_id, position, pw!.salt, pw!.pass, now());
    if (existing && (existing.level !== f.level || existing.perms !== JSON.stringify(overrides) || existing.position !== position)) notify([id], 'access', 'Your account access has changed.');
    log(c, 'account', existing ? 'modify' : 'add', `${existing ? '修改' : '新增'}用户:${f.username} (${POSITION_LABEL[position]}, Level ${f.level})`, companyId);
    return {id};

@@ -30,9 +30,21 @@ const agent = createHttpServer(async (req, res) => {
 });
 await new Promise(r => agent.listen(0, '127.0.0.1', r));
 const agentUrl = `http://127.0.0.1:${agent.address().port}/agent`;
+// A stand-in for the WeCom (企业微信) API: token, member lookup by mobile, app messages.
+const wecomMessages = [];
+const wecomApi = createHttpServer(async (req, res) => {
+ let body = ''; for await (const ch of req) body += ch;
+ const url = new URL(req.url, 'http://x'); const json = o => { res.writeHead(200, {'Content-Type': 'application/json'}); res.end(JSON.stringify(o)); };
+ if (url.pathname === '/cgi-bin/gettoken') return json(url.searchParams.get('corpsecret') === 'wecom-secret' ? {errcode: 0, access_token: 'tok', expires_in: 7200} : {errcode: 40001});
+ if (url.searchParams.get('access_token') !== 'tok') return json({errcode: 40014});
+ if (url.pathname === '/cgi-bin/user/getuserid') return json({errcode: 0, userid: 'wx-' + JSON.parse(body).mobile});
+ if (url.pathname === '/cgi-bin/message/send') { wecomMessages.push(JSON.parse(body)); return json({errcode: 0}); }
+ json({errcode: 404});
+});
+await new Promise(r => wecomApi.listen(0, '127.0.0.1', r));
 let child;
 async function start() {
- child = spawn(process.execPath, ['dist/server.mjs'], {env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: directory, ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: adminPassword, COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'true', CLAMAV_HOST: '', AGENT_URL: agentUrl, AGENT_TOKEN: 'agent-secret', AGENT_REVIEW_BELOW: '0.5', DISABLE_JOBS: '1'}, stdio: ['ignore', 'pipe', 'pipe']});
+ child = spawn(process.execPath, ['dist/server.mjs'], {env: {...process.env, PORT: String(port), PUBLIC_URL: base, DATA_DIR: directory, ADMIN_USERNAME: 'wsp-admin', ADMIN_PASSWORD: adminPassword, COMPANY_NAME: 'WSP', REQUIRE_ADMIN_MFA: 'true', CLAMAV_HOST: '', AGENT_URL: agentUrl, AGENT_TOKEN: 'agent-secret', AGENT_REVIEW_BELOW: '0.5', DISABLE_JOBS: '1', WECOM_CORP_ID: 'corp', WECOM_SECRET: 'wecom-secret', WECOM_AGENT_ID: '1000002', WECOM_API_BASE: `http://127.0.0.1:${wecomApi.address().port}`}, stdio: ['ignore', 'pipe', 'pipe']});
  await new Promise((resolve, reject) => {
   let logs = ''; const timer = setTimeout(() => reject(Error('Server startup timed out: ' + logs)), 15000);
   child.stderr.on('data', x => logs += x);
@@ -356,6 +368,19 @@ try {
  const reminders = (await tm('notifications')).filter(n => n.kind === 'deadline').map(n => n.title);
  assert(reminders.some(t => t.startsWith('Overdue by') && t.endsWith('File return')) && reminders.some(t => t.startsWith('Due in 1 day') && t.endsWith('Draft return')), reminders.join(' | '));
  assert.equal((await sys('jobs.run')).sent, 0, 'Each reminder is sent once');
+ // Notifications also go out by WeCom: found by mobile number, sent with a link back into IMS; each person chooses.
+ assert.deepEqual((await ch('notify.prefs')).now, ['wecom']); // Michelle registered with a mobile number
+ assert.deepEqual((await tm('notify.prefs')).now, [], 'No mobile, no email: notifications stay inside IMS');
+ await tm('outbox.status', {}, {ok: false});
+ await mi('item.save', {efileId: claim, name: 'Collect receipts', responsible_id: michelle});
+ const flushed = await sys('outbox.flush');
+ assert(flushed.sent >= 1 && flushed.failed === 0, JSON.stringify(flushed));
+ const toMichelle = wecomMessages.filter(m => m.touser === 'wx-13800000001');
+ assert(toMichelle.length && toMichelle.every(m => m.agentid === 1000002 && m.textcard.url.startsWith(base + '/#/')), JSON.stringify(wecomMessages.slice(-2)));
+ await ch('notify.prefs.save', {channel: 'none'});
+ assert.deepEqual((await ch('notify.prefs')).now, []);
+ await ch('notify.prefs.save', {channel: 'auto'});
+ assert.equal((await sys('outbox.status')).wecom, true);
  // Responsible person and completion: My Work lists what is assigned to me; completing an item takes it off every list.
  await sys('item.assign', {id: fileReturn, userId: staff}, {ok: false}); // not a member of the eFile
  await sys('item.assign', {id: fileReturn, userId: teamMate});
@@ -430,7 +455,7 @@ try {
  await mi('logout'); await mi('efile.list', {}, {ok: false});
  console.log('PASS: IMS + AiWSP rules — admin MFA, named System Admins, Chief Admin delegation, QR registration, levels and grant limits, temporary accounts, reset links, membership-only eFile access, blank vs zero amounts, ordering, edit conflicts, approval (lock, return/restart, versions, reject, withdraw, pause/reassign, no self-approval, override), attachment safety, departing staff hand-over, connections, processes, assistant (agent JSON/streaming, review, hand-off, staff reply, notes, privacy, failures), system log, restart and logout.');
 } finally {
- agent.close();
+ agent.close(); wecomApi.close();
  await stop();
  await rm(directory, {recursive: true, force: true});
 }

@@ -1,6 +1,7 @@
 // Request context, input helpers, the AiWSP authority rules and the system log.
 import {all, get, run, uid, now, type Row} from './db';
 import {check, fail, live, PERMS} from './auth';
+import {enqueue} from './outbox';
 
 export type Ctx = {user: Row, companyId: string, sys: boolean, position: string, perms: Set<string>};
 
@@ -119,5 +120,8 @@ export function log(c: Ctx, module: keyof typeof MODULE, fn: keyof typeof FUNC, 
   uid(), now(), companyId, c.user.id, userLabel(c.user), MODULE[module], FUNC[fn], 'Web', content.slice(0, 500));
 }
 export function notify(userIds: (string | null | undefined)[], kind: string, title: string, efileId?: string, itemId?: string) {
- for (const u of new Set(userIds.filter(Boolean) as string[])) run('INSERT INTO notification(id,user_id,kind,title,efile_id,item_id,at) VALUES(?,?,?,?,?,?,?)', uid(), u, kind, title.slice(0, 300), efileId ?? null, itemId ?? null, now());
+ for (const u of new Set(userIds.filter(Boolean) as string[])) {
+  run('INSERT INTO notification(id,user_id,kind,title,efile_id,item_id,at) VALUES(?,?,?,?,?,?,?)', uid(), u, kind, title.slice(0, 300), efileId ?? null, itemId ?? null, now());
+  enqueue(u, kind, title, efileId, itemId); // also by WeCom or email (server/outbox.ts)
+ }
 }

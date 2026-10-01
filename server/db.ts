@@ -85,6 +85,10 @@ CREATE TABLE IF NOT EXISTS process_run(
  id TEXT PRIMARY KEY, process_id TEXT NOT NULL REFERENCES process(id) ON DELETE CASCADE, origin_item_id TEXT NOT NULL REFERENCES item(id) ON DELETE CASCADE,
  stage_item_id TEXT NOT NULL REFERENCES item(id) ON DELETE CASCADE, stage INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'running', updated_at TEXT NOT NULL);
 -- Scheduled jobs (server/jobs.ts): when each last ran, and which reminders were already sent (one per key).
+-- Notifications sent outside IMS (server/outbox.ts): WeCom app messages and email, retried with back-off.
+CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, channel TEXT NOT NULL, subject TEXT NOT NULL, link TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, next_at TEXT NOT NULL, error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, sent_at TEXT);
+CREATE INDEX IF NOT EXISTS outbox_pending ON outbox(status, next_at);
 CREATE TABLE IF NOT EXISTS job_state(name TEXT PRIMARY KEY, last TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS reminder(key TEXT PRIMARY KEY, at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS notification(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, kind TEXT NOT NULL, title TEXT NOT NULL, efile_id TEXT, item_id TEXT, read_at TEXT, at TEXT NOT NULL);
@@ -114,7 +118,8 @@ PRAGMA user_version=${SCHEMA_VERSION};
 for (const [table, column, def] of [['client', 'fax', `TEXT NOT NULL DEFAULT ''`], ['client', 'introducer', `TEXT NOT NULL DEFAULT ''`], ['client', 'website', `TEXT NOT NULL DEFAULT ''`],
  ['client', 'business', `TEXT NOT NULL DEFAULT ''`], ['client', 'team_type', `TEXT NOT NULL DEFAULT 'group'`],
  ['client', 'account_company_id', 'TEXT REFERENCES company(id)'], ['efile', 'client_id', 'TEXT REFERENCES client(id) ON DELETE SET NULL'],
- ['item', 'responsible_id', 'TEXT'], ['item', 'completed_by', 'TEXT'], ['item', 'completed_at', 'TEXT']]) {
+ ['item', 'responsible_id', 'TEXT'], ['item', 'completed_by', 'TEXT'], ['item', 'completed_at', 'TEXT'],
+ ['user', 'wecom_userid', `TEXT NOT NULL DEFAULT ''`], ['user', 'notify_channel', `TEXT NOT NULL DEFAULT 'auto'`]]) {
  if (!(sql.prepare(`PRAGMA table_info(${table})`).all() as any[]).some(c => c.name === column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
 }
 

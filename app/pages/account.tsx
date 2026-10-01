@@ -5,7 +5,7 @@ import {Breadcrumb, Panel, DataTable, Loading, FormPanel, FieldRow, Tool, ToolMe
 
 const acct = (label: string) => [{label: 'Account Management'}, {label}];
 const PERM_LABEL: Record<string, string> = {createFile: 'Create eFile', createItem: 'Create item', edit: 'Edit items', download: 'Download attachments', export: 'Export',
- submit: 'Submit for approval', approve: 'Approve (Approval User)', efileAdmin: 'Administer eFiles (eFile Admin)', client: 'Client Management'};
+ submit: 'Submit for approval', approve: 'Approve (Approval User)', efileAdmin: 'Administer eFiles (eFile Admin)', client: 'Client Management', clientChat: 'Client conversations (AiWSP Assistant)'};
 const q = (companyId?: string) => companyId ? `?company=${companyId}` : '';
 const Back = ({to}: {to: string}) => <button className="btn-sq grey" onClick={() => go(to)} title="Back"><i className="fa fa-undo"/></button>;
 const SaveSq = ({onClick}: {onClick: () => void}) => <button className="btn-sq" onClick={onClick} title="Save"><i className="fa fa-check"/></button>;
@@ -202,7 +202,7 @@ export function UserEfiles({id}: {id: string}) {
 }
 
 export function UserForm({id, companyId}: {id?: string, companyId?: string}) {
- const [f, setF] = useState<any>({username: '', name_cn: '', name_en: '', sex: 'M', dept: '', email: '', mobile: '', level: 3, position: 'member', perms: {}, expires: '', responsible_id: '', password: ''});
+ const [f, setF] = useState<any>({username: '', name_cn: '', name_en: '', sex: 'M', dept: '', email: '', mobile: '', wecom_userid: '', level: 3, position: 'member', perms: {}, expires: '', responsible_id: '', password: ''});
  const [meta, setMeta] = useState<any>(null);
  useEffect(() => {
   (id ? api('user.get', {id}).then(r => { setF({...r.user, expires: r.user.expires?.slice(0, 10) ?? '', responsible_id: r.user.responsible_id ?? '', password: ''}); return r; }) : api('user.form', {companyId})).then(setMeta).catch(toastError);
@@ -226,6 +226,7 @@ export function UserForm({id, companyId}: {id?: string, companyId?: string}) {
    <FieldRow label="Dept/Position"><input type="text" value={f.dept} onChange={set('dept')} placeholder="Separate several with commas"/></FieldRow>
    <FieldRow label="Email"><input type="email" value={f.email} onChange={set('email')}/></FieldRow>
    <FieldRow label="Mobile (for WeCom)"><input type="text" value={f.mobile} onChange={set('mobile')}/></FieldRow>
+   <FieldRow label="WeCom user ID"><input type="text" value={f.wecom_userid ?? ''} onChange={set('wecom_userid')} autoComplete="off"/><div className="hint">Optional. Leave blank to find the user in WeCom by mobile number when the first notification is sent.</div></FieldRow>
    <div className="divider"/>
    {f.position === 'chief' ? <FieldRow label="Position"><div className="view-value">Chief Admin (assigned by a System Admin from the Company list)</div></FieldRow>
     : <FieldRow label="Position"><select value={f.position} onChange={set('position')} disabled={!meta.can_appoint_useradmin && !meta.can_appoint_system}>{positions.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -435,10 +436,34 @@ export function Profile({me, changePassword}: {me: Me, changePassword: boolean})
     {data.expires && <><b>Account expires</b><span>{data.expires.slice(0, 10)}</span></>}
    </div>}
   </Panel>
+  <NotificationPrefs sys={!!me.sys}/>
   <FormPanel title="Change Password" actions={<SaveSq onClick={save}/>}>
    <FieldRow label="Current Password" req><input type="password" autoFocus={changePassword} value={p.current} onChange={e => setP({...p, current: e.target.value})} autoComplete="current-password"/></FieldRow>
    <FieldRow label="New Password" req><input type="password" value={p.password} onChange={e => setP({...p, password: e.target.value})} autoComplete="new-password"/></FieldRow>
    <FieldRow label="Confirm Password" req><input type="password" value={p.confirm} onChange={e => setP({...p, confirm: e.target.value})} autoComplete="new-password"/></FieldRow>
   </FormPanel>
  </>;
+}
+
+// My Profile → Notifications: how in-app notifications also reach this person (WeCom, email), and delivery status for System Admins.
+const CHANNEL_LABEL: Record<string, string> = {auto: 'Automatic: WeCom if available, otherwise email', wecom: 'WeCom only', email: 'Email only', both: 'WeCom and email', none: 'Only inside IMS'};
+function NotificationPrefs({sys}: {sys: boolean}) {
+ const {data, reload} = useLoad(() => api('notify.prefs'), []);
+ const {data: status, reload: reloadStatus} = useLoad(() => sys ? api('outbox.status') : Promise.resolve(null), [sys]);
+ if (!data) return null;
+ const save = async (channel: string) => { try { await api('notify.prefs.save', {channel}); toast('Saved.'); reload(); } catch (e) { toastError(e); } };
+ const flush = async () => { try { const r = await api('outbox.flush'); toast(`Sent ${r.sent}, failed ${r.failed}.`); reloadStatus(); } catch (e) { toastError(e); } };
+ const where = data.now.map((ch: string) => ch === 'wecom' ? 'WeCom' : 'email').join(' and ');
+ return <Panel title="Notifications">
+  <div className="detail-grid" style={{padding: 10}}>
+   <b>Also send to</b><span><select aria-label="Notification channel" value={data.channel} onChange={e => save(e.target.value)} style={{height: 30, maxWidth: 380}}>
+    {data.channels.map((ch: string) => <option key={ch} value={ch}>{CHANNEL_LABEL[ch]}</option>)}</select></span>
+   <b>Currently</b><span>{where ? `Your notifications are also sent by ${where}.` : <span className="muted">Notifications stay inside IMS{!data.wecom && !data.email ? ' (this server has no WeCom or email set up)' : data.channel !== 'none' ? ' (add your mobile number or email address to your account to receive them)' : ''}.</span>}</span>
+  </div>
+  {status && <div className="detail-grid" style={{padding: '0 10px 10px'}}>
+   <b>Server</b><span>WeCom {status.wecom ? 'configured' : 'not configured'} · Email {status.email ? 'configured' : 'not configured'}</span>
+   <b>Last 7 days</b><span>{['sent', 'pending', 'failed'].map(k => `${status.counts[k] ?? 0} ${k}`).join(' · ')} <button className="btn grey" style={{marginLeft: 10}} onClick={flush}>Send waiting now</button></span>
+   {status.failures.length > 0 && <><b>Recent failures</b><span>{status.failures.map((f: any, n: number) => <div key={n} className="muted">{f.created_at.slice(0, 16).replace('T', ' ')} · {f.username} · {f.channel}: {f.error}</div>)}</span></>}
+  </div>}
+ </Panel>;
 }

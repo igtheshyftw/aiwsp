@@ -7,9 +7,11 @@ import {api,upload,download} from './api';
 import {initialize,publicOrigin} from './auth';
 import {closeDatabase} from './storage';
 import {startJobs} from './jobs';
+import {startDelivery} from './outbox';
 
 await initialize();
 if(process.env.DISABLE_JOBS!=='1')startJobs();
+startDelivery();
 const assets=fileURLToPath(new URL('./client/',import.meta.url));
 const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2'};
 const server=createServer(async(req,res)=>{

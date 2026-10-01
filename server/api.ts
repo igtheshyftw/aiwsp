@@ -13,11 +13,21 @@ import {itemActions} from './actions/item';
 import {chatActions} from './actions/chat';
 import {clientActions} from './actions/client';
 import {runDaily, jobState} from './jobs';
+import {deliver, outboxStatus, channelsFor, wecomReady, emailReady, CHANNELS} from './outbox';
 
 const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions, ...clientActions,
  // Run today's reminders now (System Admin). They also run by themselves every morning; each reminder is sent once.
  'jobs.run'(c) { check(c.sys, 'Only a System Admin can run the scheduled jobs.'); return runDaily(); },
  'jobs.state'(c) { check(c.sys); return jobState(); },
+ // Notifications by WeCom / email: each person chooses; System Admins see delivery status and can send what is waiting now.
+ 'notify.prefs'(c) { return {channel: c.user.notify_channel || 'auto', channels: CHANNELS, wecom: wecomReady(), email: emailReady(), wecom_id: !!c.user.wecom_userid, mobile: !!c.user.mobile, has_email: !!c.user.email, now: channelsFor(c.user)}; },
+ 'notify.prefs.save'(c, b) {
+  check(CHANNELS.includes(b.channel), 'Choose how to receive notifications.');
+  run('UPDATE user SET notify_channel=? WHERE id=?', b.channel, c.user.id); log(c, 'account', 'modify', `通知方式:${b.channel}`);
+  return {now: channelsFor({...c.user, notify_channel: b.channel})};
+ },
+ 'outbox.status'(c) { check(c.sys, 'Only a System Admin can see delivery status.'); return outboxStatus(); },
+ async 'outbox.flush'(c) { check(c.sys, 'Only a System Admin can send waiting notifications.'); run(`UPDATE outbox SET next_at=? WHERE status='pending'`, now()); return deliver(); },
 };
 
 const json = (data: any, status = 200, headers: Record<string, string> = {}) =>
