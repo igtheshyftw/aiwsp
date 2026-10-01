@@ -130,7 +130,7 @@ export function SetConfirmation({id}: {id: string}) {
      {i > 0 && <button className="clear" style={{padding: 0, color: '#333', fontSize: 14}} title="Move up" onClick={() => move(i, -1)}><i className="fa fa-arrow-up"/></button>}{' '}
      {i < steps.length - 1 && <button className="clear" style={{padding: 0, color: '#333', fontSize: 14}} title="Move down" onClick={() => move(i, 1)}><i className="fa fa-arrow-down"/></button>}{' '}
      <button className="clear" style={{padding: 0, fontSize: 14}} title="Remove step" onClick={() => setSteps(steps.filter((_, j) => j !== i))}><i className="fa fa-times"/></button></span></>}>
-     <input type="text" value={s.title} placeholder={`e.g. ${["Michelle's submission check", "Manager's approval", 'Finance approval', 'Cashier', 'Final approval'][i % 5]}`} onChange={ev => set(i, {title: ev.target.value})}/></FieldRow>
+     <input type="text" value={s.title} placeholder={`e.g. ${["Submission check", "Manager's approval", 'Finance approval', 'Cashier', 'Final approval'][i % 5]}`} onChange={ev => set(i, {title: ev.target.value})}/></FieldRow>
     <PickedField label={`Step ${i + 1}: eligible approvers`} value={semi(s.users)} onPick={async () => { const p = await pickBox({title: `Step ${i + 1} approvers (must hold the approval function)`, selectedUsers: s.users.map(u => u.id)}); if (p) set(i, {users: p.users}); }} onClear={() => set(i, {users: []})}/>
    </div>)}
    <div className="field"><button className="btn blue" onClick={() => setSteps([...steps, {title: '', users: []}])}><i className="fa fa-plus"/> Add step</button></div>

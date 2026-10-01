@@ -48,17 +48,17 @@ Set these environment variables on the IMS server:
 ```json
 {
   "conversation": {"id": "…", "title": "What documents do you need this month?"},
-  "client": {"id": "…", "name": "袁宝而:Michelle", "company": "LSK & Partners Limited", "company_id": "…"},
+  "client": {"id": "…", "name": "Staff A", "company": "Demo Client", "company_id": "…"},
   "context": {
-    "client_record": {"code": "L002SH", "name": "LSK & Partners Limited", "service_team": ["WSP Professional"]},
+    "client_record": {"code": "DEMO01", "name": "Demo Client", "service_team": ["WSP Professional"]},
     "open_items": [
-      {"efile": "LSK - Annual Filing 2026", "name": "Prepare draft return", "status": "No approval required", "target_date": "2026-10-02", "overdue": false, "responsible": "wsp-staff", "step": ""}
+      {"efile": "Demo Client - Annual Filing 2026", "name": "Prepare draft return", "status": "No approval required", "target_date": "2026-10-02", "overdue": false, "responsible": "wsp-staff", "step": ""}
     ]
   },
   "messages": [
-    {"role": "client", "content": "What documents do you need this month?", "author": "袁宝而:Michelle", "at": "2026-09-30T02:15:00Z"},
+    {"role": "client", "content": "What documents do you need this month?", "author": "Staff A", "at": "2026-09-30T02:15:00Z"},
     {"role": "agent",  "content": "…", "author": "", "at": "…"},
-    {"role": "staff",  "content": "…", "author": "梁启达:Michael Leong", "at": "…"}
+    {"role": "staff",  "content": "…", "author": "WSP Professional", "at": "…"}
   ],
   "question": "the client's latest message"
 }
@@ -100,7 +100,7 @@ node scripts/example-agent.mjs &   # a stand-in that answers a few FAQ questions
 AGENT_URL=http://127.0.0.1:3100/agent npm run demo
 ```
 
-`npm run demo` starts the example agent by itself. Sign in as **Michelle**, open **AiWSP Assistant** and ask "What documents do you need?". Then sign in as **wsp-staff** to see the Client Conversations inbox.
+`npm run demo` starts the example agent by itself. Sign in as **client-staff**, open **AiWSP Assistant** and ask "What documents do you need?". Then sign in as **wsp-staff** to see the Client Conversations inbox.
 
 ## Advice for the agent itself
 

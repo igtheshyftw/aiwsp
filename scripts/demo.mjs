@@ -29,10 +29,10 @@ if (fresh) {
  console.log('Sample data created.');
 }
 console.log(`\nOpen ${base} and sign in with the password "${password}" as:
-  Michael    Chief Admin of LSK (approves step 1)
-  William    User Admin (approves step 2)
-  Michelle   staff, Level 3 (submits claims)
-  john       staff, Level 3
-  wsp-staff  WSP professional on LSK's service team (client page, Client Conversations inbox)
-  wsp-admin  WSP System Admin (sees companies, not LSK's eFiles; assistant settings)
+  client-chief   Chief Admin of Demo Client (approves step 1)
+  client-admin   User Admin of Demo Client (approves step 2)
+  client-staff   Demo Client staff, Level 3 (submits claims, asks the Assistant)
+  client-staff2  Demo Client staff, Level 3
+  wsp-staff      WSP professional on Demo Client's service team (client page, Client Conversations inbox)
+  wsp-admin      WSP System Admin (sees companies, not the client's eFiles; assistant settings)
 Press Ctrl+C to stop.`);

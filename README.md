@@ -73,12 +73,13 @@ npm run demo
 ```
 
 Open http://localhost:3000 and sign in with the password `demo-password` as:
-- **Michael**: Chief Admin of LSK
-- **William**: User Admin
-- **Michelle** or **john**: staff
+- **client-chief**: Chief Admin of Demo Client
+- **client-admin**: User Admin of Demo Client
+- **client-staff** or **client-staff2**: Demo Client staff
+- **wsp-staff**: WSP professional on Demo Client's service team
 - **wsp-admin**: WSP System Admin
 
-Michelle's claims wait for Michael's approval, then William's. The demo also starts a stand-in agent, so the AiWSP Assistant answers a few questions. The demo turns off the authenticator requirement so you can look around; real installations keep it on. The sample data lives in `./demo-data`; delete that folder to start over.
+client-staff's claims wait for client-chief's approval, then client-admin's. The demo also starts a stand-in agent, so the AiWSP Assistant answers a few questions. The demo turns off the authenticator requirement so you can look around; real installations keep it on. The sample data lives in `./demo-data`; delete that folder to start over.
 
 ## Run it for real
 
