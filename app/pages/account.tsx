@@ -22,7 +22,7 @@ export function CompanyList({me}: {me: Me}) {
  };
  return <>
   <Breadcrumb items={acct('Company Management')}/>
-  <Panel title={<>Company List › {me.company.name_en || me.company.name_cn}</>} tools={me.sys && <Tool icon="fa-plus" title="Add Company" className="boxed" onClick={() => go('/account/company/new')}/>}>
+  <Panel title={<>Company List › {me.company.name_en || me.company.name_cn}</>} tools={me.sys && <button className="btn green" title="Add Company" onClick={() => go('/account/company/new')}><i className="fa fa-plus"/> Add Company</button>}>
    {data ? <DataTable rows={data} selectable selected={sel} onSelect={setSel}
     columns={[
      {key: 'menu', title: '', width: 60, render: (c: any) => <RowMenu items={[
