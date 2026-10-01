@@ -325,6 +325,32 @@ try {
  await mi('connection.update', {id: wspLink, companyId: lsk, status: 'connected', users: [michael]});
  assert((await st('chat.inbox', {filter: 'all'})).rows.some(r => r.id === q1), 'Designated WSP staff see the client\'s conversations');
  assert(!(await st('chat.inbox', {filter: 'all'})).rows.some(r => r.company === 'Client B'));
+ // A client record links WSP's client to the client's company account; its service team gets the conversations and is notified first.
+ const teamMate = (await sys('user.save', {username: 'wsp-team', name_en: 'WSP Team', password: pw, level: 2})).id;
+ const tm = session(); await signIn(tm, 'wsp-team', pw);
+ assert(!(await tm('chat.inbox', {filter: 'all'})).rows.some(r => r.id === q1));
+ const lskClient = (await sys('client.save', {code: 'LSK', name_cn: 'LSK 仲诚', name_en: 'LSK & Partners', account_company_id: lsk, team_type: 'user', users: [teamMate]})).id;
+ await sys('client.save', {code: 'LSK2', name_cn: 'x', name_en: 'x', account_company_id: lsk}, {ok: false}); // one client record per company account
+ assert((await tm('chat.inbox', {filter: 'clients'})).rows.some(r => r.id === q1 && r.my_client), 'The service team sees its client\'s conversations');
+ assert.equal((await tm('counters')).clients, 1);
+ assert.deepEqual((await tm('client.list', {})).rows.map(r => [r.code, r.mine, r.account]), [['LSK', true, 'LSK 仲诚投资管理有限公司 (LSK & Partners Limited)']]);
+ await st('client.view', {id: lskClient}, {ok: false}); // neither on the team nor holding Client Management
+ const teamNotes = async s => (await s('notifications')).filter(n => n.kind === 'chat').length;
+ const [stBefore, tmBefore] = [await teamNotes(st), await teamNotes(tm)];
+ await ch('chat.human', {id: q1});
+ assert.equal(await teamNotes(tm), tmBefore + 1, 'The service team is told a client is waiting');
+ assert.equal(await teamNotes(st), stBefore, 'Others are not, while the client has a service team');
+ // eFiles for the client start with its team; the client page shows them with their open work.
+ const lskFile = (await sys('efile.save', {name: 'LSK Tax 2026', client_id: lskClient, participants: [{id: teamMate, rights: 'edit'}], admins: [(await sys('profile.get')).id]})).id;
+ await tm('item.save', {efileId: lskFile, name: 'File return', target_date: '2020-01-31'});
+ const view = await tm('client.view', {id: lskClient});
+ assert.deepEqual(view.efiles.map(e => [e.name, e.open, e.overdue]), [['LSK Tax 2026', 1, 1]]);
+ assert.equal((await tm('efile.get', {id: lskFile})).client.code, 'LSK');
+ // Service Team Transfer hands the user's clients to a colleague.
+ assert.equal((await sys('user.transfer', {id: teamMate, kind: 'teamTransfer', to: staff})).count, 1);
+ assert.deepEqual([(await tm('counters')).clients, (await st('counters')).clients], [0, 1]);
+ await sys('user.transfer', {id: staff, kind: 'teamCopy', to: teamMate});
+ assert.equal((await tm('counters')).clients, 1);
  // Low-confidence answers wait for review; clients see a placeholder until a professional approves (optionally edited).
  const q2 = (await ch('chat.start', {text: 'I am unsure whether this is deductible'})).id;
  let t2 = await settle(ch, q2);

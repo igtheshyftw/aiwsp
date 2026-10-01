@@ -334,3 +334,10 @@ tr.item-hl td { background: #fff4c2 !important; }
  .wz-field { grid-template-columns: 1fr; gap: 6px; } .wz-field > label:first-child { text-align: left; padding-top: 0; }
  .wz-single .hint { margin-left: 0; } .wz-foot { padding-left: 12px; }
 }
+.wz-field select { width: 100%; height: 40px; border: 1px solid #ddd; padding: 6px 10px; font: inherit; background: #fff; }
+.wz-field .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+/* Client overview */
+.cv-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 0 16px; }
+.cv-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 7px 4px; border-bottom: 1px solid #f0f0f0; }
+.cv-row > span { color: var(--muted); }
+@media (max-width: 900px) { .cv-grid { grid-template-columns: 1fr; } .cv-row { grid-template-columns: 110px 1fr; } }

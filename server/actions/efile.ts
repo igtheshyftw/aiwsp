@@ -74,7 +74,7 @@ export const efileActions: Record<string, (c: Ctx, b: any) => any> = {
   return {...safe, locked: !!password, participants: members(e, 'participant'), admins: members(e, 'admin'), groups: groups(e.id, 'participant'),
    wechat_participants: members(e, 'wechat'), wechat_groups: groups(e.id, 'wechat'), steps: steps(e.id), colors: COLORS, currencies: CURRENCIES,
    balance_total: fmt(bal.balance), notional_total: fmt(bal.notional), balance_open: fmt(e.balance), notional_open: fmt(e.notional),
-   admin_fallback: !liveAdmins(e.id).length};
+   admin_fallback: !liveAdmins(e.id).length, client: e.client_id ? get(`SELECT id, code, name_cn FROM client WHERE id=?`, e.client_id) : null};
  },
  'efile.form'() { return {colors: COLORS, currencies: CURRENCIES}; },
  'efile.save'(c, b) {
@@ -83,7 +83,9 @@ export const efileActions: Record<string, (c: Ctx, b: any) => any> = {
   if (existing) check(Number(b.version) === existing.version, 'Someone else changed this eFile. Reload it and make your change again.');
   const companyId = existing?.company_id ?? c.companyId;
   const f = {name: required(b.name, 'Name', 300), tag: text(b.tag, 300), highlight: bool(b.highlight), color: color(b.color), report_name: text(b.report_name, 200),
-   show_date: bool(b.show_date ?? 1), show_amount: bool(b.show_amount ?? 1), currency: CURRENCIES.includes(b.currency) ? b.currency : 'CNY', approval: bool(b.approval)};
+   show_date: bool(b.show_date ?? 1), show_amount: bool(b.show_amount ?? 1), currency: CURRENCIES.includes(b.currency) ? b.currency : 'CNY', approval: bool(b.approval),
+   client_id: text(b.client_id, 64) || null};
+  check(!f.client_id || get('SELECT 1 FROM client WHERE id=? AND company_id=?', f.client_id, companyId), 'Choose a client of your company.');
   // Participants carry a right: view or edit. Cross-company users must be approved connection contacts.
   const parts: [string, string][] = (Array.isArray(b.participants) ? b.participants : []).map((p: any) => typeof p === 'string' ? [p, 'edit'] : [text(p.id, 64), rightOf(p.rights)]);
   contacts(companyId, parts.map(p => p[0]), 'participant');
@@ -98,10 +100,10 @@ export const efileActions: Record<string, (c: Ctx, b: any) => any> = {
   if (f.approval) check(existing ? all('SELECT 1 FROM efile_step WHERE efile_id=?', existing.id).length : true, 'Set the approval steps (Set Confirmation) before requiring approval.');
   return tx(() => {
    const id = existing?.id ?? uid(), t = now();
-   if (existing) run('UPDATE efile SET name=?,tag=?,highlight=?,color=?,report_name=?,show_date=?,show_amount=?,currency=?,approval=?,version=version+1,updated_at=? WHERE id=?',
-    f.name, f.tag, f.highlight, f.color, f.report_name, f.show_date, f.show_amount, f.currency, f.approval, t, id);
-   else run('INSERT INTO efile(id,company_id,name,tag,highlight,color,report_name,show_date,show_amount,currency,approval,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    id, companyId, f.name, f.tag, f.highlight, f.color, f.report_name, f.show_date, f.show_amount, f.currency, f.approval, c.user.id, t, t);
+   if (existing) run('UPDATE efile SET name=?,tag=?,highlight=?,color=?,report_name=?,show_date=?,show_amount=?,currency=?,approval=?,client_id=?,version=version+1,updated_at=? WHERE id=?',
+    f.name, f.tag, f.highlight, f.color, f.report_name, f.show_date, f.show_amount, f.currency, f.approval, f.client_id, t, id);
+   else run('INSERT INTO efile(id,company_id,name,tag,highlight,color,report_name,show_date,show_amount,currency,approval,client_id,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    id, companyId, f.name, f.tag, f.highlight, f.color, f.report_name, f.show_date, f.show_amount, f.currency, f.approval, f.client_id, c.user.id, t, t);
    const before = new Set(all(`SELECT user_id FROM efile_member WHERE efile_id=? AND kind IN ('participant','admin')`, id).map(r => r.user_id));
    run('DELETE FROM efile_member WHERE efile_id=?', id); run('DELETE FROM efile_group WHERE efile_id=?', id);
    for (const [u, r] of parts) run(`INSERT OR REPLACE INTO efile_member(efile_id,kind,user_id,rights) VALUES(?,'participant',?,?)`, id, u, r);

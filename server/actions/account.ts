@@ -1,5 +1,5 @@
-// Account menu (Company, User, Role = authorization levels, User Group, Connection, System Log), registration QR codes
-// and IMS → Client Management. Rules follow docs/aiwsp/urgent-functions.md.
+// Account menu (Company, User, Role = authorization levels, User Group, Connection, System Log) and registration QR codes.
+// IMS → Client Management is in client.ts. Rules follow docs/aiwsp/urgent-functions.md.
 import QRCode from 'qrcode';
 import {all, get, run, uid, now, tx, type Row} from '../db';
 import {check, hashPassword, validPassword, digest, live, PERMS, seedLevels, publicOrigin} from '../auth';
@@ -34,6 +34,12 @@ function checkGrant(c: Ctx, companyId: string, level: number, perms: Record<stri
  const target = new Set<string>(JSON.parse(get('SELECT perms FROM level WHERE company_id=? AND level=?', companyId, level)!.perms));
  for (const [k, v] of Object.entries(perms)) v ? target.add(k) : target.delete(k);
  for (const p of target) check(allowed(c, p), 'You cannot grant a function you do not hold yourself.');
+}
+// Move one user's service-team places to another user.
+function moveTeam(from: string, to: string) {
+ const n = Number(run(`INSERT OR IGNORE INTO client_team(client_id,kind,ref_id) SELECT client_id,'user',? FROM client_team WHERE kind='user' AND ref_id=?`, to, from).changes);
+ run(`DELETE FROM client_team WHERE kind='user' AND ref_id=?`, from);
+ return n;
 }
 async function newPassword(pw: any) { validPassword(pw); const salt = uid(); return {salt, pass: await hashPassword(pw, salt)}; }
 
@@ -187,6 +193,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
    run('DELETE FROM sessions WHERE user_id=?', u.id);
    if (!history) run('DELETE FROM user WHERE id=?', u.id);
    else {
+    run(`DELETE FROM client_team WHERE kind='user' AND ref_id=?`, u.id);
     for (const t of ['efile_member', 'efile_step_user', 'user_group_member', 'connection_user', 'efile_share', 'user_efile', 'item_star', 'notification', 'chat_read']) run(`DELETE FROM ${t} WHERE user_id=?`, u.id);
     run('UPDATE chat_conversation SET assigned_to=NULL WHERE assigned_to=?', u.id);
     run(`UPDATE user SET state='deleted', pass='', totp_secret='', totp_pending='', reset_hash='', reset_expires='', revision=revision+1 WHERE id=?`, u.id);
@@ -232,6 +239,9 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
    else if (kind === 'admins') move('admin');
    else if (kind === 'process') { move('approver'); count += Number(run('UPDATE process_stage SET executor_id=? WHERE executor_id=?', to!.id, from.id).changes); }
    else if (kind === 'groupDelete') count += Number(run('DELETE FROM user_group_member WHERE user_id=?', from.id).changes);
+   // Service Team (IMS → Client Management): hand this user's clients over, or add the other user to the same clients.
+   else if (kind === 'teamTransfer') { count += moveTeam(from.id, to!.id); }
+   else if (kind === 'teamCopy') count += Number(run(`INSERT OR IGNORE INTO client_team(client_id,kind,ref_id) SELECT client_id,'user',? FROM client_team WHERE kind='user' AND ref_id=?`, to!.id, from.id).changes);
    else if (kind === 'copy' || kind === 'insert') {
     count += Number(run('INSERT OR IGNORE INTO efile_member(efile_id,kind,user_id,rights) SELECT efile_id,kind,?,rights FROM efile_member WHERE user_id=?', to!.id, from.id).changes);
     if (kind === 'insert') { run('INSERT OR IGNORE INTO efile_step_user(efile_id,position,user_id) SELECT efile_id,position,? FROM efile_step_user WHERE user_id=?', to!.id, from.id); run('INSERT OR IGNORE INTO user_group_member(group_id,user_id) SELECT group_id,? FROM user_group_member WHERE user_id=?', to!.id, from.id); }
@@ -239,6 +249,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
     for (const k of ['participant', 'admin', 'approver']) move(k);
     run('UPDATE OR IGNORE user_group_member SET user_id=? WHERE user_id=?', to!.id, from.id); run('DELETE FROM user_group_member WHERE user_id=?', from.id);
     run('UPDATE process_stage SET executor_id=? WHERE executor_id=?', to!.id, from.id);
+    moveTeam(from.id, to!.id);
     run(`UPDATE user SET state='invalid',revision=revision+1 WHERE id=?`, from.id); run('DELETE FROM sessions WHERE user_id=?', from.id);
    } else check(false, 'This function is not available.');
    log(c, 'account', 'modify', `用户移交(${kind}):${from.username}${to ? '→' + to.username : ''}`, from.company_id);
@@ -332,7 +343,7 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
  },
  'group.delete'(c, b) {
   const g = find('user_group', b.id, 'Group'); check(managesUsers(c, g.company_id));
-  tx(() => { run('DELETE FROM user_group WHERE id=?', g.id); log(c, 'account', 'remove', `删除用户组:${g.name}`, g.company_id); });
+  tx(() => { run(`DELETE FROM client_team WHERE kind='group' AND ref_id=?`, g.id); run('DELETE FROM user_group WHERE id=?', g.id); log(c, 'account', 'remove', `删除用户组:${g.name}`, g.company_id); });
   return {};
  },
  'group.users'(c, b) {
@@ -387,40 +398,6 @@ export const accountActions: Record<string, (c: Ctx, b: any) => any> = {
   const from = date(b.from, 'Time') || '0000-01-01', to = date(b.to, 'Time') || '9999-12-31';
   return all(`SELECT * FROM system_log WHERE company_id=? AND at>=? AND at<? AND user_label LIKE ? AND content LIKE ? ORDER BY at DESC LIMIT 5000`,
    companyId, from, to + 'T99', `%${text(b.user, 80)}%`, `%${text(b.content, 200)}%`);
- },
-
- // ---------------- Client Management
- 'client.list'(c) { needPerm(c, 'client'); return all('SELECT * FROM client WHERE company_id=? ORDER BY code', c.companyId); },
- 'client.get'(c, b) {
-  needPerm(c, 'client'); const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId);
-  return {...r,
-   users: all(`SELECT u.* FROM client_team t JOIN user u ON u.id=t.ref_id WHERE t.client_id=? AND t.kind='user' ORDER BY u.username`, r.id).map(u => ({id: u.id, label: userLabel(u)})),
-   groups: all(`SELECT g.id, g.name AS label FROM client_team t JOIN user_group g ON g.id=t.ref_id WHERE t.client_id=? AND t.kind='group' ORDER BY g.name`, r.id)};
- },
- // Client Info, three steps: 1 Basic Info, 2 Background Info (profile), 3 Service Team (users or user groups).
- 'client.save'(c, b) {
-  needPerm(c, 'client');
-  const f = {code: required(b.code, 'Code', 40), name_cn: required(b.name_cn, 'CN Name', 120), name_en: required(b.name_en, 'EN Name', 120), phone: text(b.phone, 40), fax: text(b.fax, 40),
-   introducer: text(b.introducer, 120), website: text(b.website, 200), address: text(b.address, 300), business: text(b.business, 300), remark: text(b.remark, 2000),
-   team_type: b.team_type === 'user' ? 'user' : 'group'};
-  const refs = f.team_type === 'user' ? ids(b.users) : ids(b.groups);
-  for (const r of refs) check(f.team_type === 'user' ? eligibleContact(c.companyId, r) : get('SELECT 1 FROM user_group WHERE id=? AND company_id=?', r, c.companyId),
-   f.team_type === 'user' ? 'Service team users must be your staff or approved connection contacts.' : 'Choose groups of your company.');
-  const existing = b.id ? find('client', b.id, 'Client') : null;
-  if (existing) check(existing.company_id === c.companyId);
-  check(!get('SELECT id FROM client WHERE company_id=? AND code=? AND id<>?', c.companyId, f.code, existing?.id ?? ''), 'This client code is already used.');
-  return tx(() => {
-   const id = existing?.id ?? uid(); const cols = Object.keys(f); const vals = Object.values(f);
-   if (existing) run(`UPDATE client SET ${cols.map(k => k + '=?').join(',')} WHERE id=?`, ...vals, id);
-   else run(`INSERT INTO client(id,company_id,${cols.join(',')}) VALUES(?,?,${cols.map(() => '?').join(',')})`, id, c.companyId, ...vals);
-   run('DELETE FROM client_team WHERE client_id=?', id);
-   for (const r of refs) run('INSERT INTO client_team(client_id,kind,ref_id) VALUES(?,?,?)', id, f.team_type, r);
-   log(c, 'client', existing ? 'modify' : 'add', `${existing ? '修改' : '新增'}客户:${f.code}`); return {id};
-  });
- },
- 'client.delete'(c, b) {
-  needPerm(c, 'client'); const r = find('client', b.id, 'Client'); check(r.company_id === c.companyId);
-  tx(() => { run('DELETE FROM client WHERE id=?', r.id); log(c, 'client', 'remove', `删除客户:${r.code}`); }); return {};
  },
 
  // ---------------- People pickers: own company plus approved connection contacts (finding someone grants nothing else).

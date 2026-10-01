@@ -11,8 +11,9 @@ import {accountActions} from './actions/account';
 import {efileActions} from './actions/efile';
 import {itemActions} from './actions/item';
 import {chatActions} from './actions/chat';
+import {clientActions} from './actions/client';
 
-const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions};
+const actions: Record<string, (c: Ctx, b: any) => any> = {...accountActions, ...efileActions, ...itemActions, ...chatActions, ...clientActions};
 
 const json = (data: any, status = 200, headers: Record<string, string> = {}) =>
  Response.json(data, {status, headers: {'Cache-Control': 'no-store', ...headers}});

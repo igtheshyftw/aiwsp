@@ -4,6 +4,7 @@ import {check, fail, hashPassword, equal, live} from '../auth';
 import {type Ctx, text, required, bool, ids, cents, date, userLabel, log, notify, fmt, context, allowed} from '../ctx';
 import {efile as openEfile, role, may} from '../access';
 import {steps as efileSteps, balances, touch} from './efile';
+import {myClientIds} from './client';
 
 const LINK_KINDS = ['auto_link', 'conditional_auto_link', 'split_link', 'auto_copy', 'auto_share', 'bind'];
 const MIRROR_KINDS = ['auto_link', 'conditional_auto_link', 'split_link'];
@@ -496,7 +497,8 @@ export const itemActions: Record<string, (c: Ctx, b: any) => any> = {
    FROM process_stage s JOIN efile e ON e.id=s.efile_id WHERE s.executor_id=? ORDER BY e.name`, c.user.id);
  },
  'counters'(c) {
-  return {messages: get('SELECT COUNT(*) AS n FROM notification WHERE user_id=? AND read_at IS NULL', c.user.id)!.n, confirm: (itemActions['todo.confirm'](c, {}) as Row[]).length};
+  return {messages: get('SELECT COUNT(*) AS n FROM notification WHERE user_id=? AND read_at IS NULL', c.user.id)!.n, confirm: (itemActions['todo.confirm'](c, {}) as Row[]).length,
+   clients: myClientIds(c.user.id).length};
  },
  // Notification text and links are shown only while the recipient can still open the eFile.
  'notifications'(c) {

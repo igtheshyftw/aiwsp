@@ -58,6 +58,17 @@ if (fresh) {
   {efile_id: stages[1], executor_id: william}, {efile_id: stages[2], executor_id: michael}, {efile_id: stages[3], executor_id: william, confirm_balance: true}]});
  await mi('invite.create', {companyId: lsk, days: 30});
  await mi('connection.update', {id: link, companyId: lsk, status: 'connected', users: [michael]});
+ // WSP's client record for LSK: linked to LSK's account, served by wsp-staff, with a WSP eFile of work for the client.
+ await sys('login', {username: 'wsp-admin', password});
+ const lskClient = (await sys('client.save', {code: 'L002SH', name_cn: 'LSK 仲诚投资管理有限公司', name_en: 'LSK & Partners Limited', phone: '021-6888 0000',
+  introducer: 'Michael Leong', business: 'Investment management', account_company_id: lsk, team_type: 'user', users: [staff]})).id;
+ const sysId = (await sys('profile.get')).id;
+ const filing = (await sys('efile.save', {name: 'LSK - Annual Filing 2026', client_id: lskClient, participants: [{id: staff, rights: 'edit'}], admins: [sysId]})).id;
+ const day = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+ await sys('item.save', {efileId: filing, name: 'Collect bank statements', target_date: day(-3)});
+ await sys('item.save', {efileId: filing, name: 'Prepare draft return', target_date: day(1)});
+ await sys('item.save', {efileId: filing, name: 'Partner review', target_date: day(14)});
+ await sys('logout');
  await mi('logout');
  const me = session(); await me('login', {username: 'Michelle', password});
  await me('item.save', {efileId: claim, name: 'A monthly claim - August', amount: '-300', item_date: '2023-09-01'});
@@ -73,6 +84,6 @@ console.log(`\nOpen ${base} and sign in with the password "${password}" as:
   William    User Admin (approves step 2)
   Michelle   staff, Level 3 (submits claims)
   john       staff, Level 3
-  wsp-staff  WSP professional (Client Conversations inbox for LSK)
+  wsp-staff  WSP professional on LSK's service team (client page, Client Conversations inbox)
   wsp-admin  WSP System Admin (sees companies, not LSK's eFiles; assistant settings)
 Press Ctrl+C to stop.`);

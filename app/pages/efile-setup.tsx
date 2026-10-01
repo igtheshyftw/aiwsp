@@ -7,6 +7,10 @@ type Ref = {id: string, label: string};
 const crumbs = (last: string, id?: string, name?: string) => [{label: 'IMS'}, {label: 'My eFile', to: '/ims/efile'}, ...(id && name ? [{label: name, to: `/ims/efile/${id}`}] : []), {label: last}];
 
 type Member = Ref & {rights?: string, external?: boolean};
+// Add a client's service team (users or groups) to the participants of a new eFile, with Edit rights.
+const withTeam = (f: any, cl: {users: Ref[], groups: Ref[]}) => ({...f, client_id: (cl as any).id,
+ participants: [...f.participants, ...cl.users.filter(u => !f.participants.some((p: Ref) => p.id === u.id)).map(u => ({...u, rights: 'edit'}))],
+ groups: [...f.groups, ...cl.groups.filter(g => !f.groups.some((p: Ref) => p.id === g.id)).map(g => ({...g, rights: 'edit'}))]});
 // A picked list where each person or group carries a View / Edit right.
 function RightsList({list, onChange}: {list: Member[], onChange: (l: Member[]) => void}) {
  if (!list.length) return null;
@@ -15,16 +19,20 @@ function RightsList({list, onChange}: {list: Member[], onChange: (l: Member[]) =
    <option value="edit">Edit</option><option value="view">View</option></select></span>)}</div>;
 }
 
-export function EfileForm({id}: {id?: string}) {
+export function EfileForm({id, clientId}: {id?: string, clientId?: string}) {
  const [f, setF] = useState<any>(null);
  const [meta, setMeta] = useState<{colors: string[], currencies: string[]}>({colors: [], currencies: []});
+ const [clients, setClients] = useState<any[]>([]);
  useEffect(() => {
   api('efile.form').then(setMeta).catch(toastError);
+  const options = api<any[]>('client.options').then(l => { setClients(l); return l; }).catch(() => [] as any[]);
   if (id) api('efile.get', {id}).then(setF).catch(toastError);
   else api('profile.get').then(me => setF({name: '', tag: '', highlight: false, color: '', report_name: '', currency: 'CNY', show_date: 1, show_amount: 1, approval: 0,
-   participants: [{id: me.id, label: me.username, rights: 'edit'}], groups: [], admins: me.effective.includes('efileAdmin') ? [{id: me.id, label: me.username}] : [], wechat_participants: [], wechat_groups: []})).catch(toastError);
+   participants: [{id: me.id, label: me.username, rights: 'edit'}], groups: [], admins: me.effective.includes('efileAdmin') ? [{id: me.id, label: me.username}] : [], wechat_participants: [], wechat_groups: [], client_id: ''}))
+   .then(() => options).then(l => { const cl = clientId && l.find((x: any) => x.id === clientId); if (cl) setF((v: any) => withTeam(v, cl)); }).catch(toastError);
  }, [id]);
  if (!f) return <Loading/>;
+ const chooseClient = (cid: string) => { const cl = clients.find(x => x.id === cid); setF(!id && cl ? withTeam({...f, client_id: cid}, cl) : {...f, client_id: cid}); };
  const keepRights = (old: Member[], picked: Ref[]) => picked.map(p => ({...p, rights: old.find(o => o.id === p.id)?.rights ?? 'edit'}));
  const pickUsers = (key: string, title: string) => async () => { const p = await pickBox({title, selectedUsers: f[key].map((x: Ref) => x.id)}); if (p) setF({...f, [key]: keepRights(f[key], p.users)}); };
  const pickGroups = (key: string, title: string) => async () => { const p = await pickBox({title, users: false, groups: true, selectedGroups: f[key].map((x: Ref) => x.id)}); if (p) setF({...f, [key]: keepRights(f[key], p.groups)}); };
@@ -34,7 +42,7 @@ export function EfileForm({id}: {id?: string}) {
  const save = async () => {
   try {
    const r = await api('efile.save', {id, version: f.version, name: f.name, tag: f.tag, highlight: f.highlight, color: f.color, report_name: f.report_name, currency: f.currency,
-    show_date: f.show_date, show_amount: f.show_amount, approval: f.approval,
+    show_date: f.show_date, show_amount: f.show_amount, approval: f.approval, client_id: f.client_id || '',
     participants: withRights('participants'), groups: withRights('groups'), admins: ids('admins'), wechat_participants: ids('wechat_participants'), wechat_groups: ids('wechat_groups')});
    toast('Saved.'); go(f.approval && !(f.steps?.length) ? `/ims/efile/${r.id}/confirmation` : `/ims/efile/${r.id}`);
   } catch (e) { toastError(e); }
@@ -44,6 +52,8 @@ export function EfileForm({id}: {id?: string}) {
   <FormPanel title="eFile Setup Adminstration" onSave={save} actions={<><button className="btn-sq grey" onClick={() => history.back()} title="Back"><i className="fa fa-undo"/></button><button className="btn-sq" onClick={save} title="Save"><i className="fa fa-check"/></button></>}>
    <FieldRow label="Name" req><textarea value={f.name} onChange={e => setF({...f, name: e.target.value})}/></FieldRow>
    <FieldRow label="Tag"><textarea value={f.tag} onChange={e => setF({...f, tag: e.target.value})}/></FieldRow>
+   {clients.length > 0 && <FieldRow label="Client"><select value={f.client_id ?? ''} onChange={e => chooseClient(e.target.value)}><option value="">—</option>{clients.map(cl => <option key={cl.id} value={cl.id}>{cl.label}</option>)}</select>
+    {!id && <div className="hint">Choosing a client adds its service team as participants.</div>}</FieldRow>}
    <FieldRow label="Item Template Folder"><button className="btn-sq" style={{width: 44}} title="Choose folder" onClick={() => toast('Item templates are not set up yet.')}><i className="fa fa-check-square-o"/></button></FieldRow>
    <div className="field"><label>Select Type</label><label style={{display: 'flex', gap: 8, alignItems: 'center'}}><input type="radio" checked readOnly/> User And Group</label></div>
    <PickedField label="Participants" req value={semi(f.participants)} onPick={pickUsers('participants', 'Participants (your staff and approved connection contacts)')} onClear={clear('participants')}/>
@@ -79,7 +89,7 @@ export function EfileView({id}: {id: string}) {
  const {data: e, error} = useLoad(() => api('efile.get', {id}), [id]);
  if (!e) return <Loading error={error}/>;
  const rows: [string, string][] = [
-  ['Name', e.name], ['Tag', e.tag], ['Select Type', 'User And Group'], ['Participants', rightsText(e.participants)], ['Group', rightsText(e.groups)],
+  ['Name', e.name], ['Tag', e.tag], ['Client', e.client ? `${e.client.code} ${e.client.name_cn}` : ''], ['Select Type', 'User And Group'], ['Participants', rightsText(e.participants)], ['Group', rightsText(e.groups)],
   ['Administrators', semi(e.admins)], ['Highlight', e.highlight ? 'Yes' : 'No'], ['Color', e.color],
   ['Approval', e.approval ? 'Required' : 'No approval required'],
   ...e.steps.map((s: any) => [`Step ${s.position}: ${s.title}`, s.users.map((u: any) => u.label + ';').join('')] as [string, string]),

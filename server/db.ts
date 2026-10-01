@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS user_group_member(group_id TEXT NOT NULL REFERENCES u
 CREATE TABLE IF NOT EXISTS client(
  id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES company(id), code TEXT NOT NULL DEFAULT '', name_cn TEXT NOT NULL DEFAULT '', name_en TEXT NOT NULL DEFAULT '',
  contact TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', remark TEXT NOT NULL DEFAULT '',
- fax TEXT NOT NULL DEFAULT '', introducer TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', business TEXT NOT NULL DEFAULT '', team_type TEXT NOT NULL DEFAULT 'group');
+ fax TEXT NOT NULL DEFAULT '', introducer TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', business TEXT NOT NULL DEFAULT '', team_type TEXT NOT NULL DEFAULT 'group',
+ account_company_id TEXT REFERENCES company(id));
 -- Client Info step 3: the client's service team, either users or user groups (team_type).
 CREATE TABLE IF NOT EXISTS client_team(client_id TEXT NOT NULL REFERENCES client(id) ON DELETE CASCADE, kind TEXT NOT NULL, ref_id TEXT NOT NULL, PRIMARY KEY(client_id, kind, ref_id));
 CREATE TABLE IF NOT EXISTS efile(
@@ -108,7 +109,8 @@ PRAGMA user_version=${SCHEMA_VERSION};
 
 // Columns added after schema version 2 was released: add them to existing data directories.
 for (const [table, column, def] of [['client', 'fax', `TEXT NOT NULL DEFAULT ''`], ['client', 'introducer', `TEXT NOT NULL DEFAULT ''`], ['client', 'website', `TEXT NOT NULL DEFAULT ''`],
- ['client', 'business', `TEXT NOT NULL DEFAULT ''`], ['client', 'team_type', `TEXT NOT NULL DEFAULT 'group'`]]) {
+ ['client', 'business', `TEXT NOT NULL DEFAULT ''`], ['client', 'team_type', `TEXT NOT NULL DEFAULT 'group'`],
+ ['client', 'account_company_id', 'TEXT REFERENCES company(id)'], ['efile', 'client_id', 'TEXT REFERENCES client(id) ON DELETE SET NULL']]) {
  if (!(sql.prepare(`PRAGMA table_info(${table})`).all() as any[]).some(c => c.name === column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
 }
 

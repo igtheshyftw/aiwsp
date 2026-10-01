@@ -1,11 +1,13 @@
 // AiWSP Assistant: clients ask questions; the agent (server/agent.ts) answers; WSP professionals review, take over and reply.
 // Who sees what: a client sees only their own conversations. WSP staff with the "Client conversations" function see
-// conversations of the companies they are designated for through a connection (and their own company's, for testing).
+// conversations of the companies they are designated for through a connection, of the clients whose service team they are on
+// (IMS → Client Management), and their own company's, for testing. A client's service team is notified first.
 // System Admins see all and manage the assistant settings.
 import {all, get, run, uid, now, tx, type Row} from '../db';
 import {check, fail, live} from '../auth';
 import {type Ctx, context, allowed, text, required, log, notify, userLabel} from '../ctx';
 import {answer, type AgentRequest} from '../agent';
+import {companyTeam, servedCompanies} from './client';
 
 const settings = (): Row => { const s = get('SELECT * FROM assistant_setting WHERE id=1')!; return {...s, suggestions: JSON.parse(s.suggestions || '[]')}; };
 const operatorId = () => get('SELECT id FROM company WHERE operator=1')?.id as string | undefined;
@@ -15,13 +17,17 @@ const REVIEW_BELOW = Number(process.env.AGENT_REVIEW_BELOW || 0);
 function staffCompanies(c: Ctx): Set<string> | 'all' {
  if (c.sys) return 'all';
  if (c.companyId !== operatorId() || !allowed(c, 'clientChat')) return new Set();
+ // Designated staff of a connection, plus the service team of each client linked to a company account.
  const ids = all(`SELECT CASE WHEN cn.from_company=? THEN cn.to_company ELSE cn.from_company END AS other FROM connection cn
   JOIN connection_user cu ON cu.connection_id=cn.id AND cu.user_id=? WHERE cn.status='connected' AND (cn.from_company=? OR cn.to_company=?)`, c.companyId, c.user.id, c.companyId, c.companyId).map(r => r.other);
- return new Set([c.companyId, ...ids]);
+ return new Set([c.companyId, ...ids, ...servedCompanies(c)]);
 }
 const isStaffFor = (c: Ctx, companyId: string) => { const s = staffCompanies(c); return s === 'all' || s.has(companyId); };
+// Who is told about a client's conversation: the client's service team when it has one, otherwise every WSP professional who may answer.
 function staffFor(companyId: string) {
  const op = operatorId(); if (!op) return [];
+ const team = companyTeam(op, companyId).filter(u => isStaffFor(context(get('SELECT * FROM user WHERE id=?', u)!), companyId));
+ if (team.length) return team;
  const users = all(`SELECT * FROM user WHERE company_id=? OR position='system'`, op).filter(u => live(u));
  return users.filter(u => isStaffFor(context(u), companyId)).map(u => u.id);
 }
@@ -159,11 +165,15 @@ export const chatActions: Record<string, (c: Ctx, b: any) => any> = {
  // ---- WSP staff
  'chat.inbox'(c, b) {
   const sc = staffCompanies(c); check(sc === 'all' || sc.size, 'You do not handle client conversations.');
-  const rows = (sc === 'all' ? all('SELECT * FROM chat_conversation ORDER BY updated_at DESC LIMIT 500')
-   : all(`SELECT * FROM chat_conversation WHERE company_id IN (${[...sc].map(() => '?').join(',')}) ORDER BY updated_at DESC LIMIT 500`, ...sc)).map(cv => summary(cv, c.user.id, true));
+  const only = text(b.companyId, 64);
+  if (only) check(sc === 'all' || sc.has(only), 'You do not handle this client\'s conversations.');
+  const scope = only ? [only] : sc === 'all' ? null : [...sc];
+  const served = new Set(servedCompanies(c));
+  const rows = (scope ? all(`SELECT * FROM chat_conversation WHERE company_id IN (${scope.map(() => '?').join(',')}) ORDER BY updated_at DESC LIMIT 500`, ...scope)
+   : all('SELECT * FROM chat_conversation ORDER BY updated_at DESC LIMIT 500')).map(cv => ({...summary(cv, c.user.id, true), my_client: served.has(cv.company_id)}));
   const f = text(b.filter, 20) || 'attention';
   const pick = {attention: (r: Row) => r.review || r.status === 'waiting', review: (r: Row) => r.review, waiting: (r: Row) => r.status === 'waiting',
-   mine: (r: Row) => r.assigned === userLabel(c.user), open: (r: Row) => r.status !== 'closed', closed: (r: Row) => r.status === 'closed', all: () => true}[f] ?? (() => true);
+   mine: (r: Row) => r.assigned === userLabel(c.user), clients: (r: Row) => r.my_client && r.status !== 'closed', open: (r: Row) => r.status !== 'closed', closed: (r: Row) => r.status === 'closed', all: () => true}[f] ?? (() => true);
   return {rows: rows.filter(pick), counts: {attention: rows.filter(r => r.review || r.status === 'waiting').length, review: rows.filter(r => r.review).length, waiting: rows.filter(r => r.status === 'waiting').length}};
  },
  'chat.reply'(c, b) {

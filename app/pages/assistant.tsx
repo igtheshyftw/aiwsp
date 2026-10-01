@@ -131,7 +131,7 @@ export function AssistantChat({id}: {id?: string}) {
 }
 
 // ---------------- WSP inbox
-const FILTERS: [string, string][] = [['attention', 'Needs attention'], ['review', 'To review'], ['waiting', 'Waiting for WSP'], ['mine', 'Mine'], ['open', 'Open'], ['closed', 'Closed'], ['all', 'All']];
+const FILTERS: [string, string][] = [['attention', 'Needs attention'], ['review', 'To review'], ['waiting', 'Waiting for WSP'], ['mine', 'Assigned to me'], ['clients', 'My clients'], ['open', 'Open'], ['closed', 'Closed'], ['all', 'All']];
 export function AssistantInbox({id}: {id?: string}) {
  const [cfg, setCfg] = useState<any>(null);
  const [filter, setFilter] = useState('attention');
@@ -156,7 +156,7 @@ export function AssistantInbox({id}: {id?: string}) {
      {FILTERS.map(([k, l]) => <option key={k} value={k}>{l}{inbox && ['attention', 'review', 'waiting'].includes(k) ? ` (${inbox.counts[k]})` : ''}</option>)}</select>
     {(inbox?.rows ?? []).map((c: any) => <a key={c.id} href={`#/assistant/inbox/${c.id}`} className={'conv' + (c.id === id ? ' on' : '') + (c.unread ? ' unread' : '')}>
      <div className="title">{c.title}</div>
-     <div className="meta">{c.client} · {c.company}</div>
+     <div className="meta">{c.client} · {c.company}{c.my_client && <span className="ext">My client</span>}</div>
      <div className="meta">{c.review && <span className="status pending">review</span>}{c.status === 'waiting' && <span className="status returned">waiting</span>}{!c.agent_on && c.assigned && <span className="status draft">{c.assigned}</span>} {fmtTime(c.updated_at).slice(5, 16)}</div></a>)}
     {inbox?.rows.length === 0 && <p className="muted" style={{padding: '0 12px'}}>Nothing here.</p>}
    </aside>

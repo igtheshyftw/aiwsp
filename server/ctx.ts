@@ -62,6 +62,10 @@ export function cents(v: any, label = 'Amount'): number | null {
  check(/^-?\d{1,13}(\.\d{1,2})?$/.test(s), `${label} must be a number with up to two decimal places.`);
  return Math.round(Number(s) * 100);
 }
+// Work that is still open: not archived, not completed, not finally approved or rejected. Alias i = item.
+export const OPEN_ITEM = `i.archived=0 AND i.done=0 AND i.status NOT IN ('approved','rejected')`;
+// Today's date (YYYY-MM-DD) in the firm's time zone (APP_TIMEZONE, default Asia/Shanghai), for target dates and reminders.
+export const today = (offsetDays = 0) => new Intl.DateTimeFormat('en-CA', {timeZone: process.env.APP_TIMEZONE || 'Asia/Shanghai'}).format(new Date(Date.now() + offsetDays * 86400000));
 export const fmt = (v: number | null | undefined) => v === null || v === undefined ? '' : (v / 100).toFixed(2);
 
 // Which company a request may act on: the user's own, or another one the check allows.

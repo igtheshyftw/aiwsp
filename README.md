@@ -42,9 +42,14 @@ The screens copy the original IMS. How it works follows the AiWSP requirements i
   - Clients chat with your agent and can ask for a person.
   - WSP professionals review answers, take over, reply and keep internal notes in a Client Conversations inbox.
   - The agent plugs in through `AGENT_URL` or `server/agent.ts`; see [docs/aiwsp/assistant.md](docs/aiwsp/assistant.md).
+- **Clients** (IMS → Client Management):
+  - A client record is added in three steps and can be linked to the client's own company account.
+  - Its **service team** (users or groups) is offered as participants of the client's new eFiles and gets the client's Assistant conversations first.
+  - Each client has a page with its eFiles, open and overdue items, and conversations. The purple top-bar badge lists the clients you serve.
+  - Service Team Transfer/Copy hand a departing user's clients to a colleague.
 - **To Do** (home) has four tabs: Confirm, My Items, Paused, Process Executor. Notices show in the top bar. The **System Log** records logins, views, changes, downloads, approvals and overrides.
 
-qChat, Service Team, WeChat/WeCom delivery, item templates and recurring items are not built yet (the document allows WeCom and recurring items later).
+qChat, WeChat/WeCom delivery, item templates and recurring items are not built yet (the document allows WeCom and recurring items later).
 
 ## Try it with sample data
 

@@ -139,7 +139,7 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
  useEffect(() => { if (section) setOpen(section); }, [section]);
  const [collapsed, setCollapsed] = useState(false);
  useEffect(() => { document.body.classList.toggle('collapsed', collapsed); }, [collapsed]);
- const [counters, setCounters] = useState({messages: 0, confirm: 0, chat: 0});
+ const [counters, setCounters] = useState({messages: 0, confirm: 0, chat: 0, clients: 0});
  useEffect(() => {
   const load = () => Promise.all([api('counters'), api('chat.counters')]).then(([a, b]) => setCounters({...a, chat: b.mine + b.staff})).catch(() => {});
   load(); const t = setInterval(load, 30000); return () => clearInterval(t);
@@ -185,13 +185,13 @@ export function Shell({me, children, onLogout}: {me: Me, children: ReactNode, on
  </>;
 }
 
-function Notices({counters, chatStaff}: {counters: {messages: number, confirm: number, chat: number}, chatStaff: boolean}) {
+function Notices({counters, chatStaff}: {counters: {messages: number, confirm: number, chat: number, clients: number}, chatStaff: boolean}) {
  const [list, setList] = useState<any[] | null>(null);
  const openInbox = async () => { try { setList(await api('notifications')); await api('notifications.read'); } catch (e) { toastError(e); } };
  const soon = (what: string) => () => toast(`${what} is not available in this version.`);
  return <>
   <button className="badge-btn" title="AiWSP Assistant" onClick={() => go(chatStaff ? '/assistant/inbox' : '/assistant')}><span className="count green">{counters.chat}</span><i className="fa fa-comment-o"/></button>
-  <button className="badge-btn" title="Service Team" onClick={soon('Service Team')}><span className="count purple">0</span><i className="fa fa-sitemap"/></button>
+  <button className="badge-btn" title="Service Team: my clients" onClick={() => go('/ims/client?mine=1')}><span className="count purple">{counters.clients}</span><i className="fa fa-sitemap"/></button>
   <button className="badge-btn" title="To Do: confirmations" onClick={() => go('/')}><span className="count red">{counters.confirm}</span><i className="fa fa-bullhorn"/></button>
   <button className="badge-btn" title="Messages" onClick={openInbox}><span className="count blue">{counters.messages}</span><i className="fa fa-envelope"/></button>
   {list && <div className="backdrop" style={{background: 'transparent', placeItems: 'start end', padding: '38px 90px 0 0'}} onMouseDown={e => { if (e.target === e.currentTarget) setList(null); }}>
