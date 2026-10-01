@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node tests/standalone.mjs",
     "demo": "node scripts/demo.mjs",
-    "backup": "node scripts/backup.mjs"
+    "backup": "node scripts/backup.mjs",
+    "build:demo": "node scripts/build-demo.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
@@ -29,6 +30,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "esbuild": "0.28.0",
+    "sql.js": "^1.14.2",
     "typescript": "5.9.3",
     "vite": "8.0.13"
   },

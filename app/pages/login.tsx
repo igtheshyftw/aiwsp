@@ -12,6 +12,9 @@ function Card({title, children}: {title: string, children: React.ReactNode}) {
  </div>;
 }
 
+// Set by the online demo (demo/main.ts): sample accounts to sign in with.
+const demo = (window as any).IMS_DEMO as {password: string, accounts: [string, string][]} | undefined;
+
 export function Login({onLogin}: {onLogin: (me: Me) => void}) {
  const [username, setUsername] = useState('');
  const [password, setPassword] = useState('');
@@ -36,6 +39,10 @@ export function Login({onLogin}: {onLogin: (me: Me) => void}) {
    {error && <p style={{color: '#c9302c', margin: '0 0 12px'}}>{error}</p>}
    <button className="btn blue" disabled={busy}>{busy ? 'Signing in…' : needCode ? 'Verify' : 'Log In'}</button>
   </form>
+  {demo && <div className="demo-accounts">
+   <p>Online demo with sample data. Choose who to sign in as (password <b>{demo.password}</b>):</p>
+   {demo.accounts.map(([u, role]) => <button key={u} type="button" onClick={() => { setUsername(u); setPassword(demo.password); }}><b>{u}</b> <span>{role}</span></button>)}
+  </div>}
  </Card>;
 }
 

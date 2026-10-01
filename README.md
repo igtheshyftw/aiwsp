@@ -58,6 +58,10 @@ The screens copy the original IMS. How it works follows the AiWSP requirements i
 
 qChat, WeChat group sync, item templates and recurring items are not built yet (the document allows recurring items later).
 
+## Online demo (no server)
+
+`npm run build:demo` builds `dist/demo/ims-demo.html`: one file that runs the whole system in the browser with the same sample data as `npm run demo`. Open it in Chrome, Edge, Safari or Firefox, or send it to someone. Changes are kept in that browser only; **Reset demo** starts over. Attachments cannot be opened in this version, and the Assistant uses the stand-in agent.
+
 ## Try it with sample data
 
 With Node.js 24 or newer:

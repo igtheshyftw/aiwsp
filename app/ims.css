@@ -351,3 +351,15 @@ tr.overdue td:first-child { border-left: 3px solid var(--red); }
 .top-search input { width: 220px; height: 24px; border: 1px solid #555; background: #3a3a3a; color: #eee; padding: 0 8px; font-size: 13px; }
 .top-search input:focus { outline: none; border-color: var(--panel-blue); background: #444; }
 @media (max-width: 900px) { .top-search input { width: 90px; } .top-search { margin-right: 6px; } }
+/* Online demo (demo/main.ts): sample accounts on the sign-in card */
+.demo-accounts { margin-top: 18px; border-top: 1px solid #eee; padding-top: 12px; font-size: 13px; }
+.demo-accounts p { margin: 0 0 8px; color: #555; }
+.demo-accounts button { display: block; width: 100%; text-align: left; border: 1px solid #e3e3e3; background: #fafafa; padding: 6px 8px; margin: 0 0 6px; cursor: pointer; font: inherit; }
+.demo-accounts button:hover { border-color: var(--panel-blue); background: #f2f6fe; }
+.demo-accounts button span { color: #777; margin-left: 6px; }
+@media (max-width: 900px) { .tabs { flex-wrap: wrap; } .tabs button { padding: 8px 10px; font-size: 15px; white-space: nowrap; } }
+@media (max-width: 900px) {
+ .detail-grid { grid-template-columns: minmax(90px, auto) minmax(0, 1fr) !important; }
+ .detail-grid > span { min-width: 0; overflow-wrap: anywhere; }
+ .form .field { overflow-x: auto; }
+}
